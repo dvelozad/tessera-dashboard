@@ -206,3 +206,53 @@ def _display_cleanup_results(result: dict, cleanup_service: StorageCleanup):
             console.print(f"[red]✗[/red] Encountered {len(result['errors'])} errors:\n")
             for error in result["errors"]:
                 console.print(f"  [red]{error}[/red]")
+
+
+async def reconcile_storage(dry_run: bool = False) -> dict:
+    """Align artifact rows with what actually exists on the cold tier.
+
+    The transfer worker records successful uploads, but rows created before
+    that existed (or by a worker that crashed between the upload and the
+    update) stay marked 'pending' forever. This checks the cold tier directly
+    and fixes them.
+    """
+    from datetime import datetime, timezone
+
+    from sqlalchemy import select
+
+    from mddatalake.db.models import Artifact
+    from mddatalake.storage import get_storage_backend
+
+    storage = get_storage_backend()
+    cold = getattr(storage, "cold", storage)
+
+    checked = 0
+    fixed = 0
+    missing = 0
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(Artifact).where(Artifact.storage_state != "stored")
+        )
+        artifacts = list(result.scalars().all())
+
+        for artifact in artifacts:
+            checked += 1
+            if await cold.exists(artifact.storage_key):
+                if not dry_run:
+                    artifact.storage_state = "stored"
+                    artifact.remote_path = artifact.storage_key
+                    artifact.last_verified_at = datetime.now(timezone.utc)
+                fixed += 1
+            else:
+                missing += 1
+
+        if not dry_run:
+            await db.commit()
+
+    console.print(
+        f"Checked {checked} artifact(s): [green]{fixed}[/green] on the cold tier"
+        f"{' (would update)' if dry_run else ''}, "
+        f"[yellow]{missing}[/yellow] not found there"
+    )
+    return {"checked": checked, "fixed": fixed, "missing": missing}

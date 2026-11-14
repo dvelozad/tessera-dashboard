@@ -224,6 +224,22 @@ def storage_cleanup(
     asyncio.run(cleanup_storage(dry_run=dry_run, skip_confirmation=yes))
 
 
+@storage_app.command("reconcile")
+def storage_reconcile(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report without changing rows"),
+):
+    """
+    Mark artifacts as stored when their blob is already on the cold tier.
+
+    Example:
+        tessera storage reconcile
+        tessera storage reconcile --dry-run
+    """
+    from mddatalake.cli.commands.storage import reconcile_storage
+
+    asyncio.run(reconcile_storage(dry_run=dry_run))
+
+
 @storage_app.command("stats")
 def storage_statistics():
     """

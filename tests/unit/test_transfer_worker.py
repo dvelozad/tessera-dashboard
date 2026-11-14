@@ -64,7 +64,7 @@ async def test_worker_uploads_and_clears_job(tmp_path: Path):
     tiered = await _make_tiered(tmp_path, cold)
     key, _ = await _queue_one(tiered, tmp_path)
 
-    worker = TransferWorker(tiered, max_gb_per_day=None)
+    worker = TransferWorker(tiered, max_gb_per_day=None, update_database=False)
     processed = await worker.run_once()
 
     assert processed == 1
@@ -79,7 +79,7 @@ async def test_worker_records_daily_ledger(tmp_path: Path):
     tiered = await _make_tiered(tmp_path, cold)
     await _queue_one(tiered, tmp_path)
 
-    worker = TransferWorker(tiered, max_gb_per_day=1.0)
+    worker = TransferWorker(tiered, max_gb_per_day=1.0, update_database=False)
     await worker.run_once()
 
     ledger = json.loads((tiered.hot_root / ".quota.json").read_text())
@@ -92,7 +92,7 @@ async def test_worker_retries_on_failure(tmp_path: Path):
     tiered = await _make_tiered(tmp_path, cold)
     await _queue_one(tiered, tmp_path)
 
-    worker = TransferWorker(tiered, max_gb_per_day=None, max_attempts=3)
+    worker = TransferWorker(tiered, max_gb_per_day=None, max_attempts=3, update_database=False)
     processed = await worker.run_once()
 
     assert processed == 0
@@ -110,7 +110,7 @@ async def test_worker_gives_up_after_max_attempts(tmp_path: Path):
     tiered = await _make_tiered(tmp_path, cold)
     await _queue_one(tiered, tmp_path)
 
-    worker = TransferWorker(tiered, max_gb_per_day=None, max_attempts=1)
+    worker = TransferWorker(tiered, max_gb_per_day=None, max_attempts=1, update_database=False)
     await worker.run_once()
 
     assert list(tiered.queue_dir.glob("*.json")) == []
@@ -125,7 +125,7 @@ async def test_worker_stops_at_daily_quota(tmp_path: Path):
     await _queue_one(tiered, tmp_path, b"y" * 4096)
 
     # Cap below one job's size: nothing should be transferred.
-    worker = TransferWorker(tiered, max_gb_per_day=0.000001)
+    worker = TransferWorker(tiered, max_gb_per_day=0.000001, update_database=False)
     processed = await worker.run_once()
 
     assert processed == 0
@@ -140,7 +140,7 @@ async def test_worker_skips_missing_hot_copy(tmp_path: Path):
 
     tiered.local_path(key).unlink()
 
-    worker = TransferWorker(tiered, max_gb_per_day=None, max_attempts=1)
+    worker = TransferWorker(tiered, max_gb_per_day=None, max_attempts=1, update_database=False)
     await worker.run_once()
 
     failed = list((tiered.queue_dir / ".failed").glob("*.json"))

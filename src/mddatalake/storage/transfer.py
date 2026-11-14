@@ -38,6 +38,7 @@ class TransferWorker:
         max_gb_per_day: float | None = 700.0,
         poll_interval: float = 5.0,
         max_attempts: int = 5,
+        update_database: bool = True,
     ) -> None:
         self.backend = backend
         self.max_bytes_per_day = (
@@ -45,6 +46,10 @@ class TransferWorker:
         )
         self.poll_interval = poll_interval
         self.max_attempts = max_attempts
+        # When true, a successful upload also flips the artifact row from
+        # 'pending' to 'stored'. Without it the database keeps claiming the
+        # bytes are only in the hot cache.
+        self.update_database = update_database
 
     # ------------------------------------------------------------------ ledger
 
@@ -193,6 +198,7 @@ class TransferWorker:
                     continue
 
                 job_file.unlink(missing_ok=True)
+                await self._mark_stored(key)
                 ledger = self._read_ledger()
                 ledger["bytes"] = int(ledger["bytes"]) + size
                 self._write_ledger(ledger)
@@ -206,6 +212,32 @@ class TransferWorker:
             self._release_lock()
 
         return processed
+
+    async def _mark_stored(self, storage_key: str) -> None:
+        """Record that a blob is now on the cold tier."""
+        if not self.update_database:
+            return
+        try:
+            from datetime import datetime
+
+            from sqlalchemy import update
+
+            from mddatalake.db.models import Artifact
+            from mddatalake.db.session import AsyncSessionLocal
+
+            async with AsyncSessionLocal() as session:
+                await session.execute(
+                    update(Artifact)
+                    .where(Artifact.storage_key == storage_key)
+                    .values(
+                        storage_state="stored",
+                        remote_path=storage_key,
+                        last_verified_at=datetime.now(timezone.utc),
+                    )
+                )
+                await session.commit()
+        except Exception as e:  # noqa: BLE001 - the upload succeeded; do not retry it
+            logger.warning(f"Uploaded {storage_key} but could not update the database: {e}")
 
     async def run_forever(self) -> None:
         """Process the queue until cancelled."""
