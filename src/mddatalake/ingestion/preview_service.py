@@ -92,6 +92,9 @@ class PreviewExtractionService:
 
             # Update status to processing
             artifact.preview_status = "processing"
+            # Stamp the attempt so a run that dies mid-way can be recognised as
+            # stale and retried instead of sitting in "processing" forever.
+            artifact.preview_generated_at = datetime.utcnow()
             await self.db.commit()
 
             # Download files to temp location

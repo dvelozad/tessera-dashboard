@@ -25,18 +25,35 @@ async def previews_command(limit: int = 0, retry_failed: bool = True) -> int:
     from mddatalake.ingestion.preview_service import PreviewExtractionService
     from mddatalake.storage import get_storage_backend
 
+    from datetime import datetime, timedelta, timezone
+
     states = ["pending"]
     if retry_failed:
         states.append("failed")
+
+    # "processing" older than this means the attempt died (crash, restart).
+    stale_before = datetime.now(timezone.utc) - timedelta(minutes=30)
 
     storage = get_storage_backend()
     done = 0
 
     async with AsyncSessionLocal() as db:
+        from sqlalchemy import or_
+
         result = await db.execute(
             select(Artifact)
             .where(Artifact.artifact_type == ArtifactType.TRAJECTORY)
-            .where(Artifact.preview_status.in_(states))
+            .where(
+                or_(
+                    Artifact.preview_status.in_(states),
+                    # Stuck mid-attempt: retry it.
+                    (Artifact.preview_status == "processing")
+                    & (
+                        Artifact.preview_generated_at.is_(None)
+                        | (Artifact.preview_generated_at < stale_before)
+                    ),
+                )
+            )
             .order_by(Artifact.id)
         )
         artifacts = list(result.scalars().all())

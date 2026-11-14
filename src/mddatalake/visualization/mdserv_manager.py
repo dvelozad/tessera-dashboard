@@ -159,7 +159,11 @@ class MDservManager:
             # Convert if needed
             logger.info(f"Converting trajectory if needed (engine: {engine_name})")
             converted_traj, converted_top = await self.converter.convert_if_needed(
-                trajectory_path, topology_path, engine_name, first_frame_only=first_frame_only
+                trajectory_path,
+                topology_path,
+                engine_name,
+                first_frame_only=first_frame_only,
+                atom_style=run.atom_style,
             )
 
             # Create database record

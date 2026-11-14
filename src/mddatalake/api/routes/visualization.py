@@ -2,20 +2,20 @@
 
 import asyncio
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mddatalake.db.models.artifact import Artifact
 from mddatalake.db.models.simulation_run import SimulationRun
 from mddatalake.db.session import get_db
-from mddatalake.visualization.mdserv_manager import MDservManager, VisualizationSessionCreate
+from mddatalake.visualization.mdserv_manager import MDservManager
 
 
 router = APIRouter(prefix="/visualizations", tags=["visualization"])
@@ -148,19 +148,46 @@ async def terminate_visualization_session(
         )
 
 
+async def _get_artifact_local_path(storage, artifact) -> tuple[Path, bool]:
+    """
+    Get a local path to an artifact, downloading if needed.
+    Returns (path, is_temporary).
+    """
+    if hasattr(storage, "local_path"):
+        local = storage.local_path(artifact.storage_key)
+        if local is not None and Path(local).exists():
+            return Path(local), False
+
+    suffix = Path(artifact.file_name).suffix or ".tmp"
+    temp_file = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+    temp_file.close()
+    temp_path = Path(temp_file.name)
+    try:
+        await storage.download(artifact.storage_key, temp_path)
+        return temp_path, True
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        raise
+
+
 @router.get("/runs/{run_id}/trajectory/metadata")
 async def get_trajectory_metadata(
     run_id: int,
     db: AsyncSession = Depends(get_db),
 ):
     """Get trajectory metadata for a simulation run."""
-    from mddatalake.db.models.simulation_run import SimulationRun
+    from sqlalchemy.orm import selectinload
+
     from mddatalake.db.models.artifact import Artifact
+    from mddatalake.db.models.simulation_run import SimulationRun
+    from mddatalake.storage import get_storage_backend
     from mddatalake.visualization.converters import TrajectoryConverter
 
     # Get simulation run
     run_result = await db.execute(
-        select(SimulationRun).where(SimulationRun.id == run_id)
+        select(SimulationRun)
+        .options(selectinload(SimulationRun.engine))
+        .where(SimulationRun.id == run_id)
     )
     run = run_result.scalar_one_or_none()
     if not run:
@@ -176,9 +203,20 @@ async def get_trajectory_metadata(
     topology_artifact = None
 
     for artifact in artifacts:
-        if artifact.artifact_type in ["trajectory", "xtc", "trr", "dcd", "dump"]:
-            trajectory_artifact = artifact
-        elif artifact.artifact_type in ["topology", "gro", "pdb", "data", "top"]:
+        is_traj = (
+            artifact.artifact_type in ["trajectory", "xtc", "trr", "dcd", "dump", "lammpstrj"]
+            or (hasattr(artifact.artifact_type, "value") and artifact.artifact_type.value == "trajectory")
+            or artifact.file_name.lower().endswith((".xtc", ".trr", ".dcd", ".dump", ".lammpstrj"))
+        )
+        is_topo = (
+            artifact.artifact_type in ["topology", "gro", "pdb", "data", "top"]
+            or (hasattr(artifact.artifact_type, "value") and artifact.artifact_type.value == "topology")
+            or artifact.file_name.lower().endswith((".gro", ".pdb", ".data", ".lmp", ".top"))
+        )
+        if is_traj:
+            if trajectory_artifact is None or artifact.file_size_bytes > trajectory_artifact.file_size_bytes:
+                trajectory_artifact = artifact
+        elif is_topo:
             topology_artifact = artifact
 
     if not trajectory_artifact or not topology_artifact:
@@ -187,34 +225,53 @@ async def get_trajectory_metadata(
             detail="Trajectory or topology artifact not found"
         )
 
-    # Check if metadata is already stored
-    if trajectory_artifact.trajectory_metadata:
-        return trajectory_artifact.trajectory_metadata
-
-    # Extract metadata using converter
-    from pathlib import Path
-    converter = TrajectoryConverter()
+    storage = get_storage_backend()
+    traj_temp: Path | None = None
+    topo_temp: Path | None = None
 
     try:
+        traj_path, is_traj_tmp = await _get_artifact_local_path(storage, trajectory_artifact)
+        if is_traj_tmp:
+            traj_temp = traj_path
+
+        topo_path, is_topo_tmp = await _get_artifact_local_path(storage, topology_artifact)
+        if is_topo_tmp:
+            topo_temp = topo_path
+
+        converter = TrajectoryConverter()
         engine_name = run.engine.name if run.engine else "UNKNOWN"
+
         metadata = await converter.get_trajectory_metadata(
-            Path(trajectory_artifact.file_path),
-            Path(topology_artifact.file_path),
-            engine_name
+            traj_path,
+            topo_path,
+            engine_name,
+            atom_style=run.atom_style,
         )
 
-        # Store metadata in database for future requests
-        trajectory_artifact.trajectory_metadata = metadata
-        trajectory_artifact.frame_count = metadata.get("n_frames", 0)
-        await db.commit()
+        if "error" in metadata and metadata.get("n_frames", 0) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Failed to extract trajectory metadata: {metadata['error']}"
+            )
+
+        if hasattr(trajectory_artifact, "preview_frame_count"):
+            trajectory_artifact.preview_frame_count = metadata.get("n_frames", 0)
+            await db.commit()
 
         return metadata
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Failed to extract metadata: {str(e)}"
         )
+    finally:
+        if traj_temp:
+            traj_temp.unlink(missing_ok=True)
+        if topo_temp:
+            topo_temp.unlink(missing_ok=True)
 
 
 @router.get("/runs/{run_id}/topology")
@@ -223,8 +280,22 @@ async def get_topology(
     db: AsyncSession = Depends(get_db),
 ):
     """Get topology information for a simulation run."""
+    from sqlalchemy.orm import selectinload
+
     from mddatalake.db.models.artifact import Artifact
-    from pathlib import Path
+    from mddatalake.db.models.simulation_run import SimulationRun
+    from mddatalake.storage import get_storage_backend
+    from mddatalake.visualization.converters import parse_topology_file
+
+    # Get simulation run
+    run_result = await db.execute(
+        select(SimulationRun)
+        .options(selectinload(SimulationRun.engine))
+        .where(SimulationRun.id == run_id)
+    )
+    run = run_result.scalar_one_or_none()
+    if not run:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
 
     # Find topology artifact
     artifacts_result = await db.execute(
@@ -234,7 +305,12 @@ async def get_topology(
 
     topology_artifact = None
     for artifact in artifacts:
-        if artifact.artifact_type in ["topology", "gro", "pdb", "data", "top"]:
+        is_topo = (
+            artifact.artifact_type in ["topology", "gro", "pdb", "data", "top"]
+            or (hasattr(artifact.artifact_type, "value") and artifact.artifact_type.value == "topology")
+            or artifact.file_name.lower().endswith((".gro", ".pdb", ".data", ".lmp", ".top"))
+        )
+        if is_topo:
             topology_artifact = artifact
             break
 
@@ -244,40 +320,32 @@ async def get_topology(
             detail="Topology artifact not found"
         )
 
-    # Parse topology using MDAnalysis
+    storage = get_storage_backend()
+    topo_temp: Path | None = None
+
     try:
-        import MDAnalysis as mda
+        topo_path, is_topo_tmp = await _get_artifact_local_path(storage, topology_artifact)
+        if is_topo_tmp:
+            topo_temp = topo_path
 
-        universe = mda.Universe(str(topology_artifact.file_path))
+        engine_name = run.engine.name if run.engine else "UNKNOWN"
+        return parse_topology_file(
+            topo_path,
+            engine=engine_name,
+            atom_style=run.atom_style,
+            atom_type_mapping=run.atom_type_mapping,
+        )
 
-        atoms = []
-        for atom in universe.atoms:
-            atoms.append({
-                "index": int(atom.index),
-                "name": atom.name,
-                "type": atom.type if hasattr(atom, "type") else atom.name,
-                "resname": atom.resname if hasattr(atom, "resname") else "",
-                "resid": int(atom.resid) if hasattr(atom, "resid") else 0,
-                "element": atom.element if hasattr(atom, "element") else "",
-            })
-
-        bonds = []
-        if hasattr(universe, "bonds") and universe.bonds:
-            for bond in universe.bonds:
-                bonds.append([int(bond.atoms[0].index), int(bond.atoms[1].index)])
-
-        return {
-            "atoms": atoms,
-            "bonds": bonds,
-            "n_atoms": len(atoms),
-            "n_bonds": len(bonds),
-        }
-
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Failed to parse topology: {str(e)}"
         )
+    finally:
+        if topo_temp:
+            topo_temp.unlink(missing_ok=True)
 
 
 
@@ -407,8 +475,6 @@ async def regenerate_preview(
 
     Useful if preview generation failed or cache was cleared.
     """
-    from mddatalake.ingestion.preview_service import PreviewExtractionService
-    from mddatalake.storage import get_storage_backend
 
     # Find trajectory artifact
     from mddatalake.core.enums import ArtifactType
@@ -451,7 +517,6 @@ async def generate_thumbnail(
 ):
     """Generate a thumbnail preview image for a simulation run."""
     from mddatalake.db.models.artifact import Artifact
-    from pathlib import Path
     import tempfile
 
     # Find topology artifact for thumbnail generation
@@ -475,7 +540,7 @@ async def generate_thumbnail(
     try:
         # Generate a simple placeholder thumbnail
         # In production, would use pymol, nglview headless, or similar
-        from PIL import Image, ImageDraw, ImageFont
+        from PIL import Image, ImageDraw
 
         # Create a simple placeholder image
         img = Image.new('RGB', (300, 200), color=(240, 240, 240))
