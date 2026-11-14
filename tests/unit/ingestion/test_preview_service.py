@@ -283,7 +283,7 @@ async def test_find_topology_artifact(mock_db):
 
     # await db.execute() resolves to a result object, not to a coroutine.
     mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = topology
+    mock_result.scalars.return_value.all.return_value = [topology]
     mock_db.execute.return_value = mock_result
 
     # Execute
@@ -292,3 +292,56 @@ async def test_find_topology_artifact(mock_db):
     # Verify
     assert result == topology
     assert result.artifact_type == ArtifactType.TOPOLOGY
+
+
+@pytest.mark.asyncio
+async def test_find_topology_artifact_prefers_matching_stage(mock_db):
+    """A staged GROMACS run has many .gro files; pick the trajectory's stage."""
+    service = PreviewExtractionService(mock_db, AsyncMock())
+
+    def artifact(name, size):
+        return Artifact(
+            id=1,
+            simulation_run_id=5,
+            artifact_type=ArtifactType.TOPOLOGY,
+            file_name=name,
+            file_path=f"/x/{name}",
+            storage_key=f"k/{name}",
+            checksum_sha256="c",
+            file_size_bytes=size,
+        )
+
+    solute = artifact("BZE.gro", 763)
+    system = artifact("npt_prod.gro", 2_700_000)
+
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = [solute, system]
+    mock_db.execute.return_value = mock_result
+
+    result = await service._find_topology_artifact(5, "npt_prod.xtc")
+
+    assert result.file_name == "npt_prod.gro"
+
+
+@pytest.mark.asyncio
+async def test_find_topology_artifact_falls_back_to_largest(mock_db):
+    service = PreviewExtractionService(mock_db, AsyncMock())
+
+    small = Artifact(
+        id=1, simulation_run_id=5, artifact_type=ArtifactType.TOPOLOGY,
+        file_name="a.gro", file_path="/x/a.gro", storage_key="k/a",
+        checksum_sha256="c", file_size_bytes=10,
+    )
+    large = Artifact(
+        id=2, simulation_run_id=5, artifact_type=ArtifactType.TOPOLOGY,
+        file_name="b.gro", file_path="/x/b.gro", storage_key="k/b",
+        checksum_sha256="c", file_size_bytes=9999,
+    )
+
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = [small, large]
+    mock_db.execute.return_value = mock_result
+
+    result = await service._find_topology_artifact(5, "unrelated.xtc")
+
+    assert result.file_name == "b.gro"

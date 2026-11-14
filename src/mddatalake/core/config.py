@@ -63,6 +63,14 @@ class Settings(BaseSettings):
     # Staging area for `tessera pull` (rsync target before ingestion)
     staging_root: str = "/var/lib/tessera/staging"
 
+    # obleas, the lab's MD analysis suite (C++/MPI). It runs on the host that
+    # holds the data, so this path is where the binary lives on that host.
+    obleas_bin: str = "obleas"
+    obleas_timeout_seconds: int = 3600
+    obleas_enabled: bool = True
+    # Skip trajectories larger than this when analysing (0 = no limit).
+    obleas_max_trajectory_gb: float = 0.0
+
     # API Configuration
     api_host: str = "0.0.0.0"
     api_port: int = 8000

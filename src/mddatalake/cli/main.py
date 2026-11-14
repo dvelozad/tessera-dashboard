@@ -90,6 +90,9 @@ def push(
     source: str = typer.Option(
         None, "--source", help="Provenance label; defaults to the absolute directory path"
     ),
+    analyze: bool = typer.Option(
+        True, "--analyze/--no-analyze", help="Run obleas analyses on the data host"
+    ),
 ):
     """
     Upload a run to the cold tier from the machine that holds it.
@@ -111,6 +114,7 @@ def push(
             description=description,
             record_path=record,
             source_label=source,
+            analyze=analyze,
         )
     )
 

@@ -59,6 +59,7 @@ async def push_command(
     description: str | None = None,
     record_path: Path | None = None,
     source_label: str | None = None,
+    analyze: bool = False,
 ) -> Path:
     """Parse a run, upload its blobs to the cold tier, and emit a record."""
     from mddatalake.core.config import settings
@@ -134,6 +135,32 @@ async def push_command(
         extra={"source": source, "pushed_from": source_label or "unknown"},
     )
 
+    # Analyse here, on the machine that holds the data: obleas reads the
+    # trajectory in place, so no bytes move for this.
+    analyses: list[dict[str, Any]] = []
+    if analyze and settings.obleas_enabled:
+        from mddatalake.analysis.service import analyze_directory, runner_from_settings
+
+        runner = runner_from_settings()
+        if not runner.available():
+            console.print(
+                f"[yellow]obleas not found at {runner.binary!r}; skipping analysis[/yellow]"
+            )
+        else:
+            console.print("[bold]Running obleas analyses...[/bold]")
+            try:
+                series = await analyze_directory(
+                    directory,
+                    metadata,
+                    runner,
+                    max_trajectory_bytes=int(settings.obleas_max_trajectory_gb * 1e9)
+                    or None,
+                )
+                analyses = [item.as_record() for item in series]
+                console.print(f"  {len(analyses)} series from obleas")
+            except Exception as e:  # noqa: BLE001 - analysis must not lose the push
+                console.print(f"[yellow]analysis failed: {e}[/yellow]")
+
     payload = {
         "record_version": 1,
         "project": project_name,
@@ -143,6 +170,7 @@ async def push_command(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "metadata": _jsonable(metadata),
         "artifacts": artifacts,
+        "analyses": analyses,
     }
 
     record_path = record_path or Path(f"{run_name}.json")

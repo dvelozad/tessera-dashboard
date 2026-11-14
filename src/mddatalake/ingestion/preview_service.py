@@ -112,7 +112,9 @@ class PreviewExtractionService:
 
                 # Get topology artifact
                 if not topology_artifact:
-                    topology_artifact = await self._find_topology_artifact(artifact.simulation_run_id)
+                    topology_artifact = await self._find_topology_artifact(
+                        artifact.simulation_run_id, artifact.file_name
+                    )
 
                 if not topology_artifact:
                     raise ValueError("Topology artifact not found")
@@ -480,21 +482,38 @@ class PreviewExtractionService:
         except OSError as e:
             logger.warning(f"Could not trim partial frame from {path}: {e}")
 
-    async def _find_topology_artifact(self, run_id: int) -> Artifact | None:
-        """
-        Find topology artifact for a simulation run.
+    async def _find_topology_artifact(
+        self, run_id: int, trajectory_name: str | None = None
+    ) -> Artifact | None:
+        """Find the topology that describes the same system as the trajectory.
 
-        Args:
-            run_id: Simulation run ID
-
-        Returns:
-            Topology artifact or None if not found
+        A staged GROMACS run holds many coordinate files: small solute
+        topologies (``BZE.gro``, 16 atoms) next to the system ones
+        (``npt_prod.gro``, 41 600 atoms). Taking the first topology artifact
+        yields a structure that cannot match the trajectory, so prefer the one
+        whose name follows the trajectory's stage, then the largest file.
         """
         from mddatalake.core.enums import ArtifactType
+
         result = await self.db.execute(
             select(Artifact)
             .where(Artifact.simulation_run_id == run_id)
             .where(Artifact.artifact_type == ArtifactType.TOPOLOGY)
-            .limit(1)
         )
-        return result.scalar_one_or_none()
+        candidates = list(result.scalars().all())
+        if not candidates:
+            return None
+
+        if trajectory_name:
+            stage = Path(trajectory_name).stem
+            for candidate in candidates:
+                if Path(candidate.file_name).stem == stage:
+                    return candidate
+            # LAMMPS names its trajectory traj.* while the topology is data.*,
+            # so a shared prefix is the next best signal.
+            for candidate in candidates:
+                if Path(candidate.file_name).stem.startswith(stage):
+                    return candidate
+
+        candidates.sort(key=lambda a: a.file_size_bytes or 0, reverse=True)
+        return candidates[0]
