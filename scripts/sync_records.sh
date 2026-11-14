@@ -29,3 +29,8 @@ for record in "$LOCAL_DIR"/*.json; do
         | grep -v "already exists" \
         | sed "s|^|$(date -Is) |"
 done
+
+# Imported runs have no preview yet. Build a few per tick so the dashboard
+# fills in on its own without hammering Drive.
+"$PYTHON" -m mddatalake.cli.main previews --limit "${TESSERA_PREVIEWS_PER_TICK:-2}" 2>&1 \
+    | sed "s|^|$(date -Is) |"

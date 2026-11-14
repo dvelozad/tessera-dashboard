@@ -151,6 +151,8 @@ class PreviewExtractionService:
                 artifact.preview_frame_count = self.config.preview_frame_count
                 artifact.preview_generated_at = datetime.utcnow()
                 artifact.preview_status = "ready"
+                # Clear whatever a previous failed attempt recorded.
+                artifact.preview_error_message = None
                 await self.db.commit()
 
                 logger.info(f"Preview extracted for artifact {artifact.id}")
@@ -222,30 +224,85 @@ class PreviewExtractionService:
         engine_upper = engine_name.upper()
 
         if engine_upper == "LAMMPS":
-            # Convert atom style to MDAnalysis format
+            # A LAMMPS data file cannot be read without knowing the atom style,
+            # and plenty of runs never record one. Try the stored style first,
+            # then the common ones; the Atoms section decides which is right.
+            candidates: list[str] = []
             if atom_style:
-                lammps_atom_style = self._convert_atom_style_to_mda_format(atom_style)
-            else:
-                lammps_atom_style = "id type x y z"
+                candidates.append(self._convert_atom_style_to_mda_format(atom_style))
+            for fallback in ("full", "charge", "molecular", "atomic", "id type x y z"):
+                if fallback not in candidates:
+                    candidates.append(fallback)
 
-            # LAMMPS-specific loading
-            if topology_path.suffix.lower() == '.pdb':
-                universe = mda.Universe(
-                    str(topology_path),
-                    str(trajectory_path),
-                    format="LAMMPSDUMP",
-                    atom_style=lammps_atom_style
-                )
-            else:
-                # LAMMPS data file as topology
-                # For DATA format, atom_style is used for reading the Atoms section
-                universe = mda.Universe(
-                    str(topology_path),
-                    str(trajectory_path),
-                    topology_format="DATA",
-                    format="LAMMPSDUMP",
-                    atom_style=lammps_atom_style
-                )
+            is_pdb_topology = topology_path.suffix.lower() == ".pdb"
+            universe = None
+            last_error: Exception | None = None
+
+            for style in candidates:
+                try:
+                    if is_pdb_topology:
+                        universe = mda.Universe(
+                            str(topology_path),
+                            str(trajectory_path),
+                            format="LAMMPSDUMP",
+                            atom_style=style,
+                        )
+                    else:
+                        universe = mda.Universe(
+                            str(topology_path),
+                            str(trajectory_path),
+                            topology_format="DATA",
+                            format="LAMMPSDUMP",
+                            atom_style=style,
+                        )
+                    logger.info(f"Loaded LAMMPS topology with atom_style={style!r}")
+                    break
+                except Exception as e:  # noqa: BLE001 - try the next style
+                    last_error = e
+                    universe = None
+
+            if universe is None:
+                # Last resort: the dump carries id/type/x/y/z itself, so the
+                # structure can be built from the trajectory alone. HAdResS
+                # data files declare styles like "full/gc/HAdResS/kk" that no
+                # reader knows, but their dumps are perfectly ordinary.
+                try:
+                    universe = mda.Universe(
+                        str(trajectory_path),
+                        format="LAMMPSDUMP",
+                        atom_style="id type x y z",
+                    )
+                    logger.warning(
+                        "Fell back to building the structure from the trajectory "
+                        f"({topology_path.name} unreadable: {last_error})"
+                    )
+
+                    # The dump only knows atom types. Recover elements from the
+                    # data file's Masses section so the viewer can colour atoms
+                    # instead of drawing everything as hydrogen-white.
+                    masses_by_type = self._parse_lammps_masses(topology_path)
+                    if masses_by_type:
+                        import numpy as np
+
+                        elements = np.array(
+                            [
+                                self._element_from_mass(masses_by_type.get(str(t), 0.0))
+                                for t in universe.atoms.types
+                            ],
+                            dtype=object,
+                        )
+                        universe.add_TopologyAttr("elements", elements)
+                        universe.add_TopologyAttr("names", elements.copy())
+                        logger.info(
+                            f"Assigned elements from the Masses section: "
+                            f"{sorted(set(elements))}"
+                        )
+                except Exception as traj_error:  # noqa: BLE001
+                    raise ValueError(
+                        "Could not parse the LAMMPS topology with any known atom "
+                        f"style (last error: {last_error}); reading the trajectory "
+                        f"alone also failed: {traj_error}"
+                    )
         elif engine_upper == "GROMACS":
             # GROMACS-specific loading
             universe = mda.Universe(str(topology_path), str(trajectory_path))
@@ -329,6 +386,65 @@ class PreviewExtractionService:
                 writer.write(universe.atoms)
 
         logger.info(f"Extracted {actual_frames} frames to {output_path}")
+
+    @staticmethod
+    def _parse_lammps_masses(path: Path, max_lines: int = 20000) -> dict[str, float]:
+        """Read the ``Masses`` section of a LAMMPS data file: type -> mass.
+
+        Deliberately a plain text scan: this file often uses a style MDAnalysis
+        refuses to parse, but its Masses section is always simple.
+        """
+        masses: dict[str, float] = {}
+        try:
+            in_section = False
+            with open(path, "r", errors="replace") as f:
+                for _ in range(max_lines):
+                    line = f.readline()
+                    if not line:
+                        break
+                    stripped = line.strip()
+                    if not stripped:
+                        if in_section and masses:
+                            break
+                        continue
+                    if stripped.split("#")[0].strip().lower() == "masses":
+                        in_section = True
+                        continue
+                    if not in_section:
+                        continue
+                    parts = stripped.split()
+                    if len(parts) >= 2:
+                        try:
+                            masses[parts[0]] = float(parts[1])
+                        except ValueError:
+                            continue
+        except OSError as e:
+            logger.warning(f"Could not read masses from {path}: {e}")
+        return masses
+
+    @staticmethod
+    def _element_from_mass(mass: float) -> str:
+        """Map an atomic mass to an element symbol (coarse, sufficient for colour)."""
+        ranges = {
+            (0.5, 1.5): "H",
+            (5.5, 7.0): "Li",
+            (9.5, 11.0): "B",
+            (11.5, 12.5): "C",
+            (13.5, 14.6): "N",
+            (15.5, 16.5): "O",
+            (18.5, 19.5): "F",
+            (22.5, 23.5): "Na",
+            (26.5, 27.5): "Al",
+            (27.5, 28.5): "Si",
+            (30.5, 32.6): "S",
+            (34.5, 36.0): "Cl",
+            (38.5, 40.0): "K",
+            (39.5, 40.5): "Ca",
+        }
+        for (low, high), element in ranges.items():
+            if low <= mass <= high:
+                return element
+        return "X"
 
     @staticmethod
     def _trim_partial_frame(path: Path, marker: bytes = b"ITEM: TIMESTEP") -> None:

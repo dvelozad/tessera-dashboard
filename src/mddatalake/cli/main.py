@@ -149,6 +149,24 @@ def worker(
 
 
 @app.command()
+def previews(
+    limit: int = typer.Option(0, "--limit", help="Stop after N artifacts (0 = all)"),
+    retry_failed: bool = typer.Option(
+        True, "--retry-failed/--no-retry-failed", help="Retry artifacts whose preview failed"
+    ),
+):
+    """
+    Build 3D previews for trajectories that do not have one.
+
+    Example:
+        tessera previews
+    """
+    from mddatalake.cli.commands.previews import previews_command
+
+    asyncio.run(previews_command(limit=limit, retry_failed=retry_failed))
+
+
+@app.command()
 def doctor():
     """
     Check configuration, storage tiers, transfer queue and database.
