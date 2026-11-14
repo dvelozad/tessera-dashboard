@@ -133,9 +133,12 @@ async def test_extract_preview_non_trajectory(
 
 @pytest.mark.asyncio
 async def test_extract_preview_large_file(
-    mock_db, mock_storage, mock_trajectory_artifact
+    mock_db, mock_storage, mock_trajectory_artifact, monkeypatch
 ):
     """Test that files exceeding max size are skipped."""
+    from mddatalake.core.config import settings
+
+    monkeypatch.setattr(settings, "preview_max_file_size_mb", 500)
     # Setup - file larger than 500 MB
     mock_trajectory_artifact.file_size_bytes = 600 * 1024 * 1024
     service = PreviewExtractionService(mock_db, mock_storage)
@@ -157,8 +160,9 @@ async def test_extract_preview_no_topology(
     # Setup
     service = PreviewExtractionService(mock_db, mock_storage)
 
-    # Mock database query returning None - fix async mock
-    mock_result = AsyncMock()
+    # await db.execute() resolves to a result object, not to a coroutine, so the
+    # result itself is a plain MagicMock.
+    mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = None
     mock_db.execute.return_value = mock_result
 
@@ -275,8 +279,8 @@ async def test_find_topology_artifact(mock_db):
         file_size_bytes=2048,
     )
 
-    # Fix async mock
-    mock_result = AsyncMock()
+    # await db.execute() resolves to a result object, not to a coroutine.
+    mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = topology
     mock_db.execute.return_value = mock_result
 

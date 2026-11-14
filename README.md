@@ -61,7 +61,7 @@ they start at boot and survive logout:
 
 ```bash
 systemctl --user status tessera-api tessera-worker tessera-web
-journalctl --user -u tessera-worker -f
+tail -f ~/.local/share/tessera/logs/worker.log   # user journald is inactive here
 ```
 
 Copies live in `deploy/systemd/user/`. The Python environment is

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import tempfile
 from pathlib import Path
 from typing import Any, BinaryIO
@@ -70,6 +71,22 @@ class RcloneBackend(StorageBackend):
             flags += ["--bwlimit", self.bandwidth_limit]
         return flags
 
+    def _env(self) -> dict[str, str]:
+        """Environment for rclone.
+
+        rclone reads RCLONE_* variables itself and treats an empty value as an
+        invalid flag (``RCLONE_BWLIMIT=""`` is a hard failure), so empty values
+        from a .env file are dropped rather than forwarded.
+        """
+        env = {
+            name: value
+            for name, value in os.environ.items()
+            if not (name.startswith("RCLONE_") and not value.strip())
+        }
+        if self.config_path:
+            env["RCLONE_CONFIG"] = self.config_path
+        return env
+
     async def _run(self, args: list[str]) -> tuple[int, str, str]:
         """Run rclone and return (returncode, stdout, stderr)."""
         try:
@@ -78,6 +95,7 @@ class RcloneBackend(StorageBackend):
                 *args,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=self._env(),
             )
         except FileNotFoundError as e:
             raise StorageError("rclone is not installed or not on PATH") from e

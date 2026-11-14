@@ -8,6 +8,8 @@ Type=simple
 WorkingDirectory=/home/deo/Documents/tessera-dashboard
 EnvironmentFile=/home/deo/Documents/tessera-dashboard/.env
 ExecStart=/home/deo/.venvs/tessera-py312/bin/python -m uvicorn mddatalake.api.main:app --host 0.0.0.0 --port 8000
+StandardOutput=append:/home/deo/.local/share/tessera/logs/api.log
+StandardError=append:/home/deo/.local/share/tessera/logs/api.log
 Restart=on-failure
 RestartSec=5
 

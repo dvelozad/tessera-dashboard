@@ -106,6 +106,18 @@ async def test_download_stream_returns_readable_handle(
         handle.close()
 
 
+def test_empty_rclone_env_vars_are_dropped(monkeypatch):
+    """An empty RCLONE_* value is an invalid flag to rclone, so drop it."""
+    monkeypatch.setenv("RCLONE_BWLIMIT", "")
+    monkeypatch.setenv("RCLONE_BUSY", "1")
+    backend = RcloneBackend(remote="gdrive", root="tessera")
+
+    env = backend._env()
+
+    assert "RCLONE_BWLIMIT" not in env
+    assert env["RCLONE_BUSY"] == "1"
+
+
 def test_remote_path_keeps_absolute_local_root(tmp_path: Path):
     """Regression: a stripped leading slash wrote into the working directory."""
     backend = RcloneBackend(remote="", root=str(tmp_path / "cold"))
