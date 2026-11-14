@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import apiClient from '@/services/api';
 import type { Project, SimulationRun } from '@/types/visualization';
 import {
@@ -40,6 +40,7 @@ const actionButton = (primary = false): React.CSSProperties => ({
 
 export const ProjectsPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<number | null>(null);
@@ -49,6 +50,15 @@ export const ProjectsPage: React.FC = () => {
   const [newDesc, setNewDesc] = useState('');
   const [busy, setBusy] = useState(false);
   const [hoverId, setHoverId] = useState<number | null>(null);
+
+  // Returning from a run: land on the project it came from.
+  React.useEffect(() => {
+    const incoming = (location.state as { projectId?: number } | null)?.projectId;
+    if (typeof incoming === 'number') {
+      setSelected(incoming);
+      setTab('runs');
+    }
+  }, [location.state]);
 
   const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: () => apiClient.listProjects() });
   const runsQuery = useQuery({ queryKey: ['runs', 'projects'], queryFn: () => apiClient.listRuns({ limit: 1000 }) });
@@ -352,7 +362,15 @@ export const ProjectsPage: React.FC = () => {
                       return (
                         <div
                           key={run.id}
-                          onClick={() => navigate(`/runs/${run.id}`)}
+                          onClick={() =>
+                            navigate(`/runs/${run.id}`, {
+                              state: {
+                                from: 'projects',
+                                projectId: active.id,
+                                projectName: active.name,
+                              },
+                            })
+                          }
                           onMouseEnter={() => setHoverId(run.id)}
                           onMouseLeave={() => setHoverId(null)}
                           style={{

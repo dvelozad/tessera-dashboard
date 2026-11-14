@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { apiClient } from '@/services/api';
 import { useCompleteness } from '@/hooks/useCompleteness';
 import { CompletenessCard } from '@/components/completeness/CompletenessCard';
@@ -31,6 +31,18 @@ const METHOD_LABELS: Record<string, string> = {
 export const RunDetailPage: React.FC = () => {
   const { runId } = useParams<{ runId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  // A run opened from a project should return to that project, not the datalake.
+  const origin = (location.state || {}) as {
+    from?: string;
+    projectId?: number;
+    projectName?: string;
+  };
+  const fromProject = origin.from === 'projects';
+  const goBack = () =>
+    fromProject
+      ? navigate('/projects', { state: { projectId: origin.projectId } })
+      : navigate('/');
   const [sectionTab, setSectionTab] = useState(0);
   const [run, setRun] = useState<SimulationRun | null>(null);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
@@ -143,8 +155,8 @@ export const RunDetailPage: React.FC = () => {
       <div className="rdp">
         <div className="rdp-error">
           <div className="rdp-error__msg">{error || 'Run not found'}</div>
-          <button className="rdp-topbar__back" onClick={() => navigate('/')}>
-            <ArrowLeftIcon /> Back to runs
+          <button className="rdp-topbar__back" onClick={goBack}>
+            <ArrowLeftIcon /> {fromProject ? 'Back to project' : 'Back to runs'}
           </button>
         </div>
       </div>
@@ -161,12 +173,13 @@ export const RunDetailPage: React.FC = () => {
     <div className="rdp">
       {/* Top bar */}
       <div className="rdp-topbar">
-        <button className="rdp-topbar__back" onClick={() => navigate('/')}>
-          <ArrowLeftIcon /> Back to runs
+        <button className="rdp-topbar__back" onClick={goBack}>
+          <ArrowLeftIcon /> {fromProject ? 'Back to project' : 'Back to runs'}
         </button>
 
         <div className="rdp-topbar__breadcrumb">
-          runs / <span>{run.run_name}</span>
+          {fromProject ? `projects / ${origin.projectName || '—'} / ` : 'runs / '}
+          <span>{run.run_name}</span>
         </div>
 
         <div className="rdp-topbar__actions">
