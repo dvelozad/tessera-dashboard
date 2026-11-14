@@ -57,6 +57,8 @@ class Settings(BaseSettings):
     hot_root: str = "/var/lib/tessera/hot"
     hot_max_gb: float = 10.0
     hot_keep_copies: bool = True  # keep the hot copy after a successful push
+    # Never let the hot tier fill the volume; uploads are refused instead.
+    hot_min_free_gb: float = 2.0
 
     # Staging area for `tessera pull` (rsync target before ingestion)
     staging_root: str = "/var/lib/tessera/staging"

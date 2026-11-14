@@ -40,6 +40,7 @@ class TieredBackend(StorageBackend):
         max_bytes: int,
         defer_upload: bool = True,
         keep_hot: bool = True,
+        min_free_bytes: int = 2_000_000_000,
     ) -> None:
         self.hot_root = Path(hot_root)
         self.hot_root.mkdir(parents=True, exist_ok=True)
@@ -47,6 +48,7 @@ class TieredBackend(StorageBackend):
         self.max_bytes = max_bytes
         self.defer_upload = defer_upload
         self.keep_hot = keep_hot
+        self.min_free_bytes = min_free_bytes
         self.queue_dir.mkdir(parents=True, exist_ok=True)
         (self.queue_dir / FAILED_DIRNAME).mkdir(parents=True, exist_ok=True)
 
@@ -192,6 +194,19 @@ class TieredBackend(StorageBackend):
                 raise StorageError(f"Hot cache checksum mismatch for {storage_key}")
         else:
             self.evict_if_needed(required_bytes=size)
+
+            # Eviction cannot free anything when every cached file still has a
+            # pending upload. Refuse the write rather than filling the volume:
+            # a full disk here takes the whole service down.
+            free = shutil.disk_usage(self.hot_root).free
+            if free - size < self.min_free_bytes:
+                raise StorageError(
+                    f"Hot tier is full: {free / 1e9:.1f} GB free, "
+                    f"{size / 1e9:.1f} GB needed, "
+                    f"{self.min_free_bytes / 1e9:.1f} GB must stay free. "
+                    "Drain the transfer queue (tessera worker) and retry."
+                )
+
             tmp = dest.with_name(dest.name + ".part")
             try:
                 with open(file_path, "rb") as src, open(tmp, "wb") as out:

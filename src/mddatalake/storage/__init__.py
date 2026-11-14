@@ -47,6 +47,7 @@ def get_storage_backend() -> StorageBackend:
             max_bytes=int(settings.hot_max_gb * 1_000_000_000),
             defer_upload=settings.gdrive_defer_uploads,
             keep_hot=settings.hot_keep_copies,
+            min_free_bytes=int(settings.hot_min_free_gb * 1_000_000_000),
         )
 
     if settings.storage_backend == "s3":
