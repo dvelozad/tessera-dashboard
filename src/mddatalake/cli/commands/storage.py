@@ -11,7 +11,7 @@ from rich.panel import Panel
 from mddatalake.core.config import settings
 from mddatalake.db.session import AsyncSessionLocal
 from mddatalake.storage.cleanup import StorageCleanup
-from mddatalake.storage.filesystem import FilesystemBackend
+from mddatalake.storage import get_storage_backend
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -22,7 +22,7 @@ async def scan_storage(verbose: bool = False):
     console.print("\n[bold cyan]Scanning storage...[/bold cyan]\n")
 
     # Initialize storage and database
-    storage_backend = FilesystemBackend(settings.storage_root)
+    storage_backend = get_storage_backend()
     async with AsyncSessionLocal() as db:
         cleanup_service = StorageCleanup(storage_backend, db)
 
@@ -43,7 +43,7 @@ async def cleanup_storage(dry_run: bool = True, skip_confirmation: bool = False)
         )
 
     # Initialize storage and database
-    storage_backend = FilesystemBackend(settings.storage_root)
+    storage_backend = get_storage_backend()
     async with AsyncSessionLocal() as db:
         cleanup_service = StorageCleanup(storage_backend, db)
 
@@ -98,7 +98,7 @@ async def storage_stats():
     console.print("\n[bold cyan]Storage Statistics[/bold cyan]\n")
 
     # Initialize storage and database
-    storage_backend = FilesystemBackend(settings.storage_root)
+    storage_backend = get_storage_backend()
     async with AsyncSessionLocal() as db:
         cleanup_service = StorageCleanup(storage_backend, db)
 
@@ -107,7 +107,7 @@ async def storage_stats():
 
         # Create statistics panel
         stats_text = f"""
-[cyan]Storage Root:[/cyan] {settings.storage_root}
+[cyan]Storage Backend:[/cyan] {settings.storage_backend} ({settings.storage_root})
 
 [bold]Files:[/bold]
   Total files:       {result['total_files']:>10,}

@@ -26,8 +26,12 @@ class Settings(BaseSettings):
     jwt_access_token_expire_minutes: int = 480  # 8 hours
 
     # Storage Backend
-    storage_backend: Literal["filesystem", "s3"] = "filesystem"
-    storage_root: str = "/tmp/mdrepo/artifacts"
+    # filesystem: single local directory (development)
+    # s3:         S3/MinIO object storage
+    # gdrive:     tiered storage - bounded local hot cache in front of Google
+    #             Drive (rclone) as the cold, authoritative tier
+    storage_backend: Literal["filesystem", "s3", "gdrive"] = "filesystem"
+    storage_root: str = "/var/lib/tessera/artifacts"
 
     # S3/MinIO Configuration
     s3_endpoint_url: str | None = None
@@ -35,6 +39,27 @@ class Settings(BaseSettings):
     s3_secret_access_key: str | None = None
     s3_bucket_name: str = "md-simulations"
     s3_region: str = "us-east-1"
+
+    # Google Drive cold tier (storage_backend=gdrive)
+    gdrive_remote: str = "gdrive"  # rclone remote name; "" means a plain local path
+    gdrive_root: str = "tessera"  # folder inside the remote that holds everything
+    rclone_config_path: str | None = None  # defaults to rclone's own config
+    rclone_bwlimit: str | None = None  # e.g. "50M"; None = unlimited
+    rclone_transfers: int = 4
+    rclone_checkers: int = 8
+    rclone_drive_chunk_size: str = "128M"
+    rclone_timeout_seconds: int = 21600  # 6 h; large trajectory on a slow link
+    gdrive_defer_uploads: bool = True  # enqueue, let tessera-worker push to Drive
+    gdrive_daily_upload_gb: float = 700.0  # Drive's per-account daily upload cap
+    storage_manifest_enabled: bool = True  # write projects/<p>/<run>/manifest.json
+
+    # Hot cache (storage_backend=gdrive)
+    hot_root: str = "/var/lib/tessera/hot"
+    hot_max_gb: float = 10.0
+    hot_keep_copies: bool = True  # keep the hot copy after a successful push
+
+    # Staging area for `tessera pull` (rsync target before ingestion)
+    staging_root: str = "/var/lib/tessera/staging"
 
     # API Configuration
     api_host: str = "0.0.0.0"

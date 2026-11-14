@@ -21,6 +21,10 @@ async def ingest_command(
     """Ingest a simulation directory."""
     console.print(f"[bold]Ingesting simulation from:[/bold] {directory}")
 
+    # A CLI process exits as soon as ingestion returns, so a fire-and-forget
+    # preview task would be killed. Run preview extraction inline instead.
+    settings.preview_async_extraction = False
+
     try:
         async with AsyncSessionLocal() as session:
             service = IngestionService(session)

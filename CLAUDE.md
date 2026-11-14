@@ -10,9 +10,9 @@ MD DataLake is a full-stack application for storing, querying, and visualizing m
 
 ### Setup
 ```bash
-poetry install                    # Install Python dependencies
+make venv                         # uv venv (Python 3.12) + dependencies
 cd frontend && npm install        # Install frontend dependencies
-docker-compose up -d postgres minio  # Start backing services
+docker compose up -d postgres     # Start Postgres (host port 5433)
 make upgrade                      # Apply database migrations
 ```
 
@@ -58,7 +58,7 @@ The backend is a FastAPI app with async SQLAlchemy (asyncpg). Key layers:
 - **`db/`** — SQLAlchemy models and session management. `models/` contains one file per table (simulation_run, artifact, project, user, etc.). `session.py` provides `get_db()` for FastAPI dependency injection. `base.py` holds the declarative Base.
 - **`ingestion/`** — 5-stage pipeline (`service.py`) that detects simulation engine, parses metadata, stores artifacts, and creates DB records. `scenario_detector.py` classifies simulation types. `validators.py` handles upload validation.
 - **`parsers/`** — Engine-specific parsers for LAMMPS and GROMACS. `detector.py` auto-detects which engine produced the files. Each parser extracts metadata (ensemble, thermostat, force field, etc.) from input/log files.
-- **`storage/`** — Abstract `StorageBackend` with `FilesystemBackend` and `S3Backend` implementations. Selected by `STORAGE_BACKEND` env var.
+- **`storage/`** — Abstract `StorageBackend`. `FilesystemBackend` (dev), `S3Backend`, and the production arrangement: `TieredBackend` (bounded local hot cache) in front of `RcloneBackend` (Google Drive). Selected by `STORAGE_BACKEND`. Blob keys come from `keys.cas_key`; run manifests from `manifest.py`; the async upload queue is drained by `transfer.TransferWorker` (`tessera worker`). Every call site must use `get_storage_backend()` from `storage/__init__.py` — never construct a backend inline. See `docs/STORAGE_ARCHITECTURE.md`.
 - **`auth/`** — JWT authentication with bcrypt password hashing. `security.py` handles token creation/validation; `dependencies.py` provides FastAPI dependency.
 - **`visualization/`** — Trajectory serving for NGL Viewer. Converts trajectories to PDB format and serves them via HTTP.
 - **`core/`** — Configuration (`config.py` with pydantic-settings, reads `.env`), enums, and custom exceptions.

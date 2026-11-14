@@ -1,0 +1,18 @@
+[Unit]
+Description=Tessera API
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/opt/tessera
+EnvironmentFile=/etc/tessera/tessera.env
+ExecStart=/opt/tessera/.venv/bin/python -m uvicorn mddatalake.api.main:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=5
+# The hot cache and staging area live under /var/lib/tessera
+ReadWritePaths=/var/lib/tessera
+
+[Install]
+WantedBy=multi-user.target

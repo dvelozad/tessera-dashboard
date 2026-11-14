@@ -1,53 +1,64 @@
-.PHONY: help dev test lint format clean migrations upgrade
+PY ?= .venv/bin/python
+
+.PHONY: help venv dev test lint format clean migrations upgrade downgrade \
+        run-api worker doctor ingest pull
 
 help:
-	@echo "MD DataLake Development Commands"
+	@echo "Tessera development commands"
 	@echo ""
-	@echo "  make dev          - Start development environment (Docker Compose)"
+	@echo "  make venv         - Create .venv with Python 3.12 and install deps"
+	@echo "  make dev          - Start postgres (Docker Compose)"
+	@echo "  make run-api      - Run the API with auto-reload on :8000"
+	@echo "  make worker       - Run the Drive transfer worker in the foreground"
+	@echo "  make doctor       - Diagnose config, tiers, queue and database"
 	@echo "  make test         - Run tests with coverage"
-	@echo "  make lint         - Run linters (ruff, mypy)"
-	@echo "  make format       - Format code with black"
-	@echo "  make clean        - Stop containers and clean volumes"
-	@echo "  make migrations   - Generate new Alembic migration"
+	@echo "  make lint         - ruff + mypy"
+	@echo "  make format       - black + ruff --fix"
 	@echo "  make upgrade      - Apply Alembic migrations"
-	@echo "  make shell        - Open IPython shell with app context"
+	@echo "  make migrations   - Generate a new Alembic migration (MSG=...)"
+
+venv:
+	uv venv --python 3.12 --python-preference only-managed .venv
+	uv pip install --python $(PY) -e . pytest pytest-asyncio pytest-cov ruff mypy
 
 dev:
-	docker-compose up -d postgres minio
-	@echo "Waiting for services to be ready..."
-	@sleep 5
-	@echo "Services running:"
-	@echo "  PostgreSQL: localhost:5432"
-	@echo "  MinIO: localhost:9000 (console: localhost:9001)"
+	docker compose up -d postgres
+	@echo "PostgreSQL: localhost:5433"
 
 test:
-	poetry run pytest
+	$(PY) -m pytest
 
 lint:
-	poetry run ruff check src/ tests/
-	poetry run mypy src/
+	$(PY) -m ruff check src/ tests/
+	$(PY) -m mypy src/
 
 format:
-	poetry run black src/ tests/
-	poetry run ruff check --fix src/ tests/
+	$(PY) -m ruff check --fix src/ tests/
+	$(PY) -m black src/ tests/
 
 clean:
-	docker-compose down -v
+	docker compose down -v
 
 migrations:
-	poetry run alembic revision --autogenerate -m "$(MSG)"
+	$(PY) -m alembic revision --autogenerate -m "$(MSG)"
 
 upgrade:
-	poetry run alembic upgrade head
+	$(PY) -m alembic upgrade head
 
 downgrade:
-	poetry run alembic downgrade -1
-
-shell:
-	poetry run ipython
-
-install:
-	poetry install
+	$(PY) -m alembic downgrade -1
 
 run-api:
-	poetry run uvicorn mddatalake.api.main:app --reload --host 0.0.0.0 --port 8000
+	$(PY) -m uvicorn mddatalake.api.main:app --reload --host 0.0.0.0 --port 8000
+
+worker:
+	$(PY) -m mddatalake.cli.main worker
+
+doctor:
+	$(PY) -m mddatalake.cli.main doctor
+
+ingest:
+	$(PY) -m mddatalake.cli.main ingest $(DIR) --project $(PROJECT)
+
+pull:
+	$(PY) -m mddatalake.cli.main pull $(SRC) --project $(PROJECT)

@@ -27,10 +27,20 @@ class Artifact(Base):
     )
 
     # Storage
-    storage_key: Mapped[str] = mapped_column(String(512), nullable=False, unique=True, index=True)
+    # Non-unique by design (migration 009): identical files are deduplicated by
+    # checksum and shared by several runs.
+    storage_key: Mapped[str] = mapped_column(String(512), nullable=False, index=True)
     checksum_sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     file_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     compression: Mapped[str | None] = mapped_column(String(50))  # gzip, zstd, xz, none
+
+    # Tier state: "pending" (hot cache only, waiting for the transfer worker),
+    # "stored" (present on the cold tier), "hot" (cached locally as well).
+    storage_state: Mapped[str] = mapped_column(
+        String(20), default="stored", nullable=False, index=True
+    )
+    remote_path: Mapped[str | None] = mapped_column(String(1024))
+    last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(

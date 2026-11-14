@@ -11,13 +11,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
+# Strong references to background preview tasks; without this the event loop
+# may garbage-collect a task while it is still running.
+_background_tasks: set[asyncio.Task] = set()
+
 from mddatalake.core.config import settings
 from mddatalake.core.enums import ArtifactType, EnsembleType
 from mddatalake.core.exceptions import IngestionError
 from mddatalake.db.models import Artifact, Engine, ForceField, Project, SimulationRun, System
 from mddatalake.ingestion.scenario_detector import ScenarioDetector
 from mddatalake.parsers import GromacsParser, LammpsParser, detect_engine
-from mddatalake.storage import FilesystemBackend, S3Backend, StorageBackend
+from mddatalake.storage import StorageBackend, get_storage_backend
+from mddatalake.storage.keys import cas_key
+from mddatalake.storage.manifest import write_manifest
 from mddatalake.utils.checksum import compute_checksum
 
 
@@ -34,13 +40,14 @@ class IngestionService:
         """
         self.db = db_session
 
-        # Initialize storage backend
-        if storage_backend:
-            self.storage = storage_backend
-        elif settings.storage_backend == "s3":
-            self.storage = S3Backend()
-        else:
-            self.storage = FilesystemBackend(settings.storage_root)
+        # Initialize storage backend (single factory for every call site)
+        self.storage = storage_backend or get_storage_backend()
+
+        # With a deferred cold tier the bytes are on local disk only until the
+        # transfer worker pushes them to Drive.
+        self.storage_state = (
+            "pending" if getattr(self.storage, "defer_upload", False) else "stored"
+        )
 
     async def ingest(
         self,
@@ -171,6 +178,23 @@ class IngestionService:
 
             await self.db.commit()
 
+            # Human-readable index next to the blobs on the cold tier. Best
+            # effort: a manifest failure must not undo a successful ingest.
+            if settings.storage_manifest_enabled:
+                try:
+                    key = await write_manifest(
+                        self.storage,
+                        run_id=run_id,
+                        project_name=project_name,
+                        run_name=run_name,
+                        engine=metadata.get("engine"),
+                        description=description,
+                        artifacts=artifacts_data,
+                    )
+                    logger.info(f"Wrote manifest {key} for run {run_id}")
+                except Exception as e:
+                    logger.warning(f"Could not write manifest for run {run_id}: {e}")
+
             # Stage 5: Post-Ingestion (Async Preview Extraction)
             if settings.preview_cache_enabled:
                 await self._post_ingestion_tasks(run_id)
@@ -215,8 +239,10 @@ class IngestionService:
             # Get file size
             file_size = file_path.stat().st_size
 
-            # Upload to storage
-            storage_key = await self.storage.upload(file_path, "", checksum)
+            # Upload to storage under the content-addressed key
+            storage_key = await self.storage.upload(
+                file_path, cas_key(checksum, file_path.name), checksum
+            )
 
             processed_artifacts.append(
                 {
@@ -334,6 +360,10 @@ class IngestionService:
                 checksum_sha256=artifact_data["checksum_sha256"],
                 file_size_bytes=artifact_data["file_size_bytes"],
                 compression=artifact_data["compression"],
+                storage_state=self.storage_state,
+                remote_path=artifact_data["storage_key"]
+                if self.storage_state == "stored"
+                else None,
             )
             self.db.add(artifact)
 
@@ -496,10 +526,13 @@ class IngestionService:
             # Extract previews (async or inline based on config)
             for artifact in artifacts:
                 if settings.preview_async_extraction:
-                    # Launch in background (non-blocking)
-                    asyncio.create_task(
-                        preview_service.extract_preview(artifact)
+                    # Background extraction must not reuse this session: the
+                    # caller closes it as soon as ingest() returns.
+                    task = asyncio.create_task(
+                        self._extract_preview_with_own_session(artifact.id)
                     )
+                    _background_tasks.add(task)
+                    task.add_done_callback(_background_tasks.discard)
                 else:
                     # Inline extraction (blocks ingestion)
                     await preview_service.extract_preview(artifact)
@@ -510,6 +543,24 @@ class IngestionService:
             import logging
             logger = logging.getLogger(__name__)
             logger.error(f"Post-ingestion tasks failed for run {run_id}: {e}")
+
+    async def _extract_preview_with_own_session(self, artifact_id: int) -> None:
+        """Extract one preview in a background task with its own DB session."""
+        from mddatalake.db.session import AsyncSessionLocal
+        from mddatalake.ingestion.preview_service import PreviewExtractionService
+
+        try:
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(Artifact).where(Artifact.id == artifact_id)
+                )
+                artifact = result.scalar_one_or_none()
+                if artifact is None:
+                    return
+                service = PreviewExtractionService(session, self.storage)
+                await service.extract_preview(artifact)
+        except Exception as e:  # noqa: BLE001 - never crash the event loop
+            logger.error(f"Background preview extraction failed for {artifact_id}: {e}")
 
     async def _get_trajectory_artifacts(self, run_id: int) -> list[Artifact]:
         """

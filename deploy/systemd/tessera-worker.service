@@ -1,0 +1,19 @@
+[Unit]
+Description=Tessera transfer worker (hot cache -> Google Drive)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/opt/tessera
+EnvironmentFile=/etc/tessera/tessera.env
+ExecStart=/opt/tessera/.venv/bin/python -m mddatalake.cli.main worker
+Restart=always
+RestartSec=30
+# Uploads can be long; never kill a chunked transfer mid-flight on reload
+TimeoutStopSec=300
+ReadWritePaths=/var/lib/tessera
+
+[Install]
+WantedBy=multi-user.target

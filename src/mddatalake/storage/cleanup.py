@@ -86,6 +86,12 @@ class StorageCleanup:
         """
         files = []
 
+        # Backends that can enumerate themselves (e.g. the tiered Drive
+        # backend) expose list_files(); use it when present.
+        list_files = getattr(self.storage, "list_files", None)
+        if callable(list_files):
+            return await list_files()
+
         # For filesystem backend, walk the storage directory
         if hasattr(self.storage, "root"):
             storage_root = self.storage.root

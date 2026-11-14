@@ -10,8 +10,8 @@ from rich.table import Table
 from mddatalake.__version__ import __version__
 
 app = typer.Typer(
-    name="mdrepo",
-    help="MD Repo - Molecular Dynamics Simulation Database",
+    name="tessera",
+    help="Tessera - molecular dynamics data lake",
     add_completion=False,
 )
 
@@ -21,7 +21,7 @@ console = Console()
 @app.command()
 def version():
     """Show version information."""
-    console.print(f"MD Repo v{__version__}")
+    console.print(f"Tessera v{__version__}")
 
 
 @app.command()
@@ -35,7 +35,7 @@ def ingest(
     Ingest a simulation directory into the database.
 
     Example:
-        mdrepo ingest /path/to/run --project my_project
+        tessera ingest /path/to/run --project my_project
     """
     from mddatalake.cli.commands.ingest import ingest_command
 
@@ -44,6 +44,69 @@ def ingest(
             directory=directory, project_name=project, run_name=name, description=description
         )
     )
+
+
+@app.command()
+def pull(
+    source: str = typer.Argument(..., help="host:/path/to/run, or a local directory"),
+    project: str = typer.Option(..., "--project", "-p", help="Project name"),
+    name: str = typer.Option(None, "--name", "-n", help="Run name (defaults to the directory name)"),
+    description: str = typer.Option(None, "--description", "-d", help="Run description"),
+    staging: Path = typer.Option(
+        None, "--staging", help="Local staging directory (defaults to TESSERA staging root)"
+    ),
+    keep: bool = typer.Option(False, "--keep", help="Keep the staged copy after ingestion"),
+):
+    """
+    Pull a run from a remote host over rsync and ingest it.
+
+    Examples:
+        tessera pull pckr258:/data/bee14/diazd/projects/LJ_GC/PROD_MUT7b -p LJ_GC
+        tessera pull /data/runs/local_run -p LJ_GC
+    """
+    from mddatalake.cli.commands.pull import pull_command
+
+    asyncio.run(
+        pull_command(
+            source=source,
+            project_name=project,
+            run_name=name,
+            description=description,
+            staging_dir=staging,
+            keep_staged=keep,
+        )
+    )
+
+
+@app.command()
+def worker(
+    once: bool = typer.Option(False, "--once", help="Process the queue once and exit"),
+    poll_interval: float = typer.Option(5.0, "--poll-interval", help="Seconds between polls"),
+):
+    """
+    Push queued artifacts from the hot cache to the cold tier (Google Drive).
+
+    Example:
+        tessera worker
+        tessera worker --once
+    """
+    from mddatalake.cli.commands.worker import worker_command
+
+    asyncio.run(worker_command(once=once, poll_interval=poll_interval))
+
+
+@app.command()
+def doctor():
+    """
+    Check configuration, storage tiers, transfer queue and database.
+
+    Example:
+        tessera doctor
+    """
+    from mddatalake.cli.commands.doctor import doctor_command
+
+    if not doctor_command():
+        raise typer.Exit(code=1)
 
 
 @app.command()
@@ -59,7 +122,7 @@ def query(
     Query the database.
 
     Example:
-        mdrepo query runs --ensemble NPT --min-temperature 296 --max-temperature 300
+        tessera query runs --ensemble NPT --min-temperature 296 --max-temperature 300
     """
     from mddatalake.cli.commands.query import query_command
 
@@ -126,8 +189,8 @@ def storage_scan(
     Scan storage and identify orphaned files.
 
     Example:
-        mdrepo storage scan
-        mdrepo storage scan --verbose
+        tessera storage scan
+        tessera storage scan --verbose
     """
     from mddatalake.cli.commands.storage import scan_storage
 
@@ -147,13 +210,13 @@ def storage_cleanup(
 
     Examples:
         # Preview what would be deleted
-        mdrepo storage cleanup
+        tessera storage cleanup
 
         # Delete with confirmation
-        mdrepo storage cleanup --force
+        tessera storage cleanup --force
 
         # Delete without confirmation
-        mdrepo storage cleanup --force --yes
+        tessera storage cleanup --force --yes
     """
     from mddatalake.cli.commands.storage import cleanup_storage
 
@@ -167,7 +230,7 @@ def storage_statistics():
     Show storage statistics.
 
     Example:
-        mdrepo storage stats
+        tessera storage stats
     """
     from mddatalake.cli.commands.storage import storage_stats
 

@@ -24,7 +24,13 @@ wheels/
 venv/
 ENV/
 env/
-.venv
+.venv/
+.venv-*/
+
+# Python packaging
+*.egg-info/
+dist/
+build/
 
 # Poetry
 poetry.lock
@@ -72,3 +78,4 @@ frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 frontend/package-lock.json
+.mddatalake_ingested

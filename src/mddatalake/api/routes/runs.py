@@ -18,10 +18,41 @@ from mddatalake.core.config import settings
 from mddatalake.core.enums import ArtifactType, EnsembleType
 from mddatalake.db.models import Artifact, SimulationRun
 from mddatalake.db.session import get_db
-from mddatalake.storage import FilesystemBackend, S3Backend
+from mddatalake.storage import FilesystemBackend, get_storage_backend
+from mddatalake.storage.keys import cas_key
 from mddatalake.utils.checksum import compute_checksum
 
 router = APIRouter()
+
+
+async def _copy_upload(upload_file: UploadFile, dest: Path, chunk_size: int = 8 * 1024 * 1024) -> None:
+    """Copy an uploaded file to disk in chunks instead of reading it all at once."""
+    with open(dest, "wb") as out:
+        while chunk := await upload_file.read(chunk_size):
+            out.write(chunk)
+
+
+async def _materialize(storage: Any, storage_key: str, dest_dir: Path) -> Path:
+    """Return a local path for an artifact.
+
+    Uses the hot tier when the backend already has the bytes locally, and
+    otherwise downloads from the cold tier into ``dest_dir``.
+    """
+    local_path = getattr(storage, "local_path", None)
+    if callable(local_path):
+        path = local_path(storage_key)
+        if path is not None:
+            return path
+
+    if isinstance(storage, FilesystemBackend):
+        path = storage.root / storage_key
+        if path.exists():
+            return path
+
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / Path(storage_key).name
+    await storage.download(storage_key, dest)
+    return dest
 
 
 class UpdateRunRequest(BaseModel):
@@ -322,38 +353,28 @@ async def download_artifact(
         raise HTTPException(status_code=404, detail="Artifact not found")
 
     # Initialize storage backend
-    if settings.storage_backend == "s3":
-        storage = S3Backend()
-    else:
-        storage = FilesystemBackend(settings.storage_root)
+    storage = get_storage_backend()
 
-    # Get file path from storage key
-    if settings.storage_backend == "s3":
-        # For S3, download to temp file
-        temp_file = Path(tempfile.mktemp(suffix=Path(artifact.file_name).suffix))
-        try:
-            await storage.download(artifact.storage_key, temp_file)
-            file_path = temp_file
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to retrieve file from storage: {str(e)}"
-            )
-    else:
-        # For filesystem, construct path directly
-        file_path = Path(settings.storage_root) / artifact.storage_key
+    temp_dir = Path(tempfile.mkdtemp(prefix="artifact_download_"))
+    try:
+        file_path = await _materialize(storage, artifact.storage_key, temp_dir)
+    except Exception as e:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve file from storage: {str(e)}"
+        )
 
     if not file_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail="File not found in storage"
-        )
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise HTTPException(status_code=404, detail="File not found in storage")
 
     # Return file response
     return FileResponse(
         path=str(file_path),
         filename=artifact.file_name,
         media_type="application/octet-stream",
+        background=lambda: shutil.rmtree(temp_dir, ignore_errors=True),
     )
 
 
@@ -389,28 +410,20 @@ async def download_all_artifacts(
         )
 
     # Initialize storage backend
-    if settings.storage_backend == "s3":
-        storage = S3Backend()
-    else:
-        storage = FilesystemBackend(settings.storage_root)
+    storage = get_storage_backend()
 
     # Create temporary zip file
     temp_dir = Path(tempfile.mkdtemp(prefix="artifact_download_"))
+    files_dir = temp_dir / "files"
     zip_path = temp_dir / f"run_{run_id}_artifacts.zip"
 
     try:
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
             for artifact in artifacts:
                 try:
-                    # Get file path from storage
-                    if settings.storage_backend == "s3":
-                        # For S3, download to temp file
-                        temp_file = temp_dir / artifact.file_name
-                        await storage.download(artifact.storage_key, temp_file)
-                        file_path = temp_file
-                    else:
-                        # For filesystem, construct path directly
-                        file_path = Path(settings.storage_root) / artifact.storage_key
+                    file_path = await _materialize(
+                        storage, artifact.storage_key, files_dir
+                    )
 
                     if file_path.exists():
                         # Add to zip with original filename
@@ -739,10 +752,7 @@ async def upload_artifacts_to_run(
             )
 
     # Initialize storage backend
-    if settings.storage_backend == "s3":
-        storage = S3Backend()
-    else:
-        storage = FilesystemBackend(settings.storage_root)
+    storage = get_storage_backend()
 
     temp_dir = None
     uploaded_artifacts = []
@@ -756,11 +766,9 @@ async def upload_artifacts_to_run(
             if not upload_file.filename:
                 continue
 
-            # Save to temp location
+            # Save to temp location without buffering the whole file in memory
             temp_file = temp_dir / upload_file.filename
-            with open(temp_file, "wb") as f:
-                content = await upload_file.read()
-                f.write(content)
+            await _copy_upload(upload_file, temp_file)
 
             # Get artifact type (from override or auto-classify)
             if upload_file.filename in type_overrides:
@@ -786,11 +794,13 @@ async def upload_artifacts_to_run(
                 })
                 continue
 
-            # Generate storage key
-            storage_key = f"runs/{run_id}/artifacts/{upload_file.filename}"
-
-            # Store file
-            await storage.store(temp_file, storage_key)
+            # Store the file content-addressed (deduplicated across runs)
+            storage_key = await storage.upload(
+                temp_file, cas_key(checksum, upload_file.filename), checksum
+            )
+            storage_state = (
+                "pending" if getattr(storage, "defer_upload", False) else "stored"
+            )
 
             # Create artifact record
             artifact = Artifact(
@@ -802,6 +812,8 @@ async def upload_artifacts_to_run(
                 checksum_sha256=checksum,
                 file_size_bytes=temp_file.stat().st_size,
                 compression=None,
+                storage_state=storage_state,
+                remote_path=storage_key if storage_state == "stored" else None,
             )
             db.add(artifact)
 
