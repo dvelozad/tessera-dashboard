@@ -29,7 +29,7 @@ export const RunBrowserFixed: React.FC<RunBrowserProps> = ({ onRunSelect }) => {
   const [filterOpen, setFilterOpen] = useState(false);
   const [page, setPage] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
-  const [tableStyle, setTableStyle] = useState<TableStyle>('notebook');
+  const [tableStyle, setTableStyle] = useState<TableStyle>('editorial');
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['runs', filters],

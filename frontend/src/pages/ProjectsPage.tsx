@@ -31,7 +31,7 @@ export const ProjectsPage: React.FC = () => {
   const { isContributor } = useAuth();
   const [createOpen, setCreateOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const [tableStyle, setTableStyle] = useState<TableStyle>('notebook');
+  const [tableStyle, setTableStyle] = useState<TableStyle>('editorial');
 
   const { data: projects = [], isLoading, error } = useQuery({
     queryKey: ['projects', search],
