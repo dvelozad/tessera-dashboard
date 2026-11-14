@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
 import apiClient from '@/services/api';
-import type { Project, SimulationRun } from '@/types/visualization';
+import type { Project, ProjectLink, SimulationRun } from '@/types/visualization';
 import { EditProjectDialog } from '@/components/projects/EditProjectDialog';
 import {
   EYEBROW,
@@ -94,6 +94,10 @@ export const ProjectsPage: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [hoverId, setHoverId] = useState<number | null>(null);
   const [editing, setEditing] = useState<Project | null>(null);
+  const [links, setLinks] = useState<ProjectLink[]>([]);
+  const [linkLabel, setLinkLabel] = useState('');
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkType, setLinkType] = useState('github');
 
   // Returning from a run: land on the project it came from.
   React.useEffect(() => {
@@ -124,6 +128,35 @@ export const ProjectsPage: React.FC = () => {
 
   const active = projects.find((project) => project.id === selected) || filtered[0];
   const activeRuns = runs.filter((run) => (active ? run.project_name === active.name : false));
+
+  React.useEffect(() => {
+    if (!active) {
+      setLinks([]);
+      return;
+    }
+    apiClient
+      .listProjectLinks(active.id)
+      .then(setLinks)
+      .catch(() => setLinks([]));
+  }, [active?.id]);
+
+  const addLink = async () => {
+    if (!active || !linkLabel.trim() || !linkUrl.trim()) return;
+    await apiClient.addProjectLink(active.id, {
+      link_type: linkType,
+      label: linkLabel.trim(),
+      url: linkUrl.trim(),
+    });
+    setLinks(await apiClient.listProjectLinks(active.id));
+    setLinkLabel('');
+    setLinkUrl('');
+  };
+
+  const removeLink = async (id: number) => {
+    if (!active) return;
+    await apiClient.removeProjectLink(active.id, id);
+    setLinks((current) => current.filter((link) => link.id !== id));
+  };
 
   const createProject = async () => {
     if (!newName.trim() || busy) return;
@@ -177,7 +210,7 @@ export const ProjectsPage: React.FC = () => {
 
   const tabs: { key: ProjectTab; label: string; count?: number }[] = [
     { key: 'runs', label: 'Runs', count: activeRuns.length },
-    { key: 'resources', label: 'Resources', count: 0 },
+    { key: 'resources', label: 'Resources', count: links.length },
     { key: 'people', label: 'Collaborators', count: active?.collaborators?.length ?? 0 },
     { key: 'about', label: 'About' },
   ];
@@ -501,11 +534,98 @@ export const ProjectsPage: React.FC = () => {
                 )}
 
                 {tab === 'resources' && (
-                  <div style={{ padding: 32, display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
-                    <span style={{ fontSize: 14, fontWeight: 600 }}>No linked resources yet.</span>
-                    <span style={{ fontSize: 13, color: 'var(--fg-muted)' }}>
-                      Repositories, datasets and manuscripts attached to this project will appear here.
-                    </span>
+                  <div style={{ padding: '18px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    <span style={EYEBROW}>Linked resources</span>
+
+                    {links.length === 0 && (
+                      <span style={{ fontSize: 13, color: 'var(--fg-muted)' }}>
+                        No linked resources yet. Add the repository, dataset or manuscript below.
+                      </span>
+                    )}
+
+                    {links.map((link) => (
+                      <div
+                        key={link.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          padding: '8px 10px',
+                          border: '1px solid var(--border-default)',
+                          borderRadius: 4,
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: 10,
+                            fontWeight: 600,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.06em',
+                            color: 'var(--fg-muted)',
+                            minWidth: 64,
+                          }}
+                        >
+                          {link.link_type}
+                        </span>
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            flex: 1,
+                            fontSize: 13,
+                            color: 'var(--fg-link)',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {link.label}
+                        </a>
+                        <button
+                          onClick={() => removeLink(link.id)}
+                          aria-label={`Remove ${link.label}`}
+                          style={{ all: 'unset', cursor: 'pointer', color: 'var(--fg-muted)', fontSize: 13 }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
+                      <select
+                        value={linkType}
+                        onChange={(event) => setLinkType(event.target.value)}
+                        style={{
+                          border: '1px solid var(--border-default)',
+                          borderRadius: 4,
+                          padding: '6px 8px',
+                          fontSize: 12,
+                          background: 'var(--bg-surface)',
+                          color: 'var(--fg-default)',
+                          fontFamily: 'var(--font-mono)',
+                        }}
+                      >
+                        <option value="github">github</option>
+                        <option value="overleaf">overleaf</option>
+                        <option value="dataset">dataset</option>
+                        <option value="url">url</option>
+                      </select>
+                      <input
+                        value={linkLabel}
+                        onChange={(event) => setLinkLabel(event.target.value)}
+                        placeholder="label (dvelozad/arepas)"
+                        style={{ flex: '1 1 180px', border: '1px solid var(--border-default)', borderRadius: 4, padding: '6px 8px', fontSize: 13, background: 'var(--bg-surface)', color: 'var(--fg-default)' }}
+                      />
+                      <input
+                        value={linkUrl}
+                        onChange={(event) => setLinkUrl(event.target.value)}
+                        placeholder="https://…"
+                        style={{ flex: '2 1 260px', border: '1px solid var(--border-default)', borderRadius: 4, padding: '6px 8px', fontSize: 13, background: 'var(--bg-surface)', color: 'var(--fg-default)', fontFamily: 'var(--font-mono)' }}
+                      />
+                      <ActionButton onClick={addLink}>Add link</ActionButton>
+                    </div>
                   </div>
                 )}
 

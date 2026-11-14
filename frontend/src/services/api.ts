@@ -11,6 +11,7 @@ import type {
   UploadResponse,
   UploadMetadata,
   Project,
+  ProjectLink,
   ProjectCreate,
 } from '@/types/visualization';
 
@@ -333,6 +334,39 @@ class APIClient {
   async updateProject(projectId: number, data: Partial<ProjectCreate>): Promise<Project> {
     const response = await this.client.patch(`/projects/${projectId}`, data);
     return response.data;
+  }
+
+  // Project links
+  async listProjectLinks(projectId: number): Promise<ProjectLink[]> {
+    const response = await this.client.get(`/projects/${projectId}/links`);
+    return response.data;
+  }
+
+  async addProjectLink(
+    projectId: number,
+    link: { link_type: string; label: string; url: string }
+  ): Promise<ProjectLink> {
+    const response = await this.client.post(`/projects/${projectId}/links`, link);
+    return response.data;
+  }
+
+  async removeProjectLink(projectId: number, linkId: number): Promise<void> {
+    await this.client.delete(`/projects/${projectId}/links/${linkId}`);
+  }
+
+  // Run labels
+  async listRunTags(runId: number): Promise<string[]> {
+    const response = await this.client.get(`/runs/${runId}/tags`);
+    return response.data;
+  }
+
+  async addRunTag(runId: number, tag: string): Promise<unknown> {
+    const response = await this.client.post(`/runs/${runId}/tags`, { tag_name: tag });
+    return response.data;
+  }
+
+  async removeRunTag(runId: number, tag: string): Promise<void> {
+    await this.client.delete(`/runs/${runId}/tags/${encodeURIComponent(tag)}`);
   }
 
   async deleteProject(projectId: number): Promise<void> {

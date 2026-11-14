@@ -52,6 +52,8 @@ export const RunDetailPage: React.FC = () => {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [uploadArtifactsDialogOpen, setUploadArtifactsDialogOpen] = useState(false);
+  const [labels, setLabels] = useState<string[]>([]);
+  const [labelDraft, setLabelDraft] = useState('');
 
   const { completeness, loading: completenessLoading } = useCompleteness(
     runId ? parseInt(runId) : null
@@ -73,6 +75,10 @@ export const RunDetailPage: React.FC = () => {
 
         setRun(runData);
         setArtifacts(artifactsData);
+        apiClient
+          .listRunTags(Number(runId))
+          .then(setLabels)
+          .catch(() => setLabels([]));
         setObservables(observablesData);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load run data');
@@ -163,6 +169,19 @@ export const RunDetailPage: React.FC = () => {
     );
   }
 
+  const addLabel = async () => {
+    const tag = labelDraft.trim();
+    if (!tag) return;
+    await apiClient.addRunTag(Number(runId), tag);
+    setLabels(await apiClient.listRunTags(Number(runId)));
+    setLabelDraft('');
+  };
+
+  const removeLabel = async (tag: string) => {
+    await apiClient.removeRunTag(Number(runId), tag);
+    setLabels((current) => current.filter((item) => item !== tag));
+  };
+
   const method = run.simulation_method || 'ATOMISTIC';
   const methodColor = METHOD_COLORS[method] || METHOD_COLORS.ATOMISTIC;
   const methodLabel = METHOD_LABELS[method] || method;
@@ -219,6 +238,50 @@ export const RunDetailPage: React.FC = () => {
           <div className="rdp-meta">
             <div className="rdp-meta__eyebrow">Run metadata</div>
             <h3 className="rdp-meta__name">{run.run_name}</h3>
+
+            {/* Labels: free-form run tags, editable in place */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 8 }}>
+              {labels.map((tag) => (
+                <span
+                  key={tag}
+                  className="rdp-meta__tag--outline rdp-meta__tag"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                >
+                  {tag}
+                  <button
+                    onClick={() => removeLabel(tag)}
+                    aria-label={`Remove label ${tag}`}
+                    style={{ all: 'unset', cursor: 'pointer', lineHeight: 1, opacity: 0.7 }}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void addLabel();
+                }}
+                style={{ display: 'inline-flex', alignItems: 'center' }}
+              >
+                <input
+                  value={labelDraft}
+                  onChange={(event) => setLabelDraft(event.target.value)}
+                  placeholder="add label"
+                  aria-label="Add label"
+                  style={{
+                    border: '1px dashed var(--border-default)',
+                    borderRadius: 3,
+                    background: 'transparent',
+                    color: 'var(--fg-muted)',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 11,
+                    padding: '3px 6px',
+                    width: 104,
+                  }}
+                />
+              </form>
+            </div>
 
             {/* Tags */}
             <div className="rdp-meta__tags">

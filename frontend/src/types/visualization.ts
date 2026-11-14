@@ -236,3 +236,12 @@ export interface DeleteRunResponse {
   status: string;
   message: string;
 }
+
+export interface ProjectLink {
+  id: number;
+  project_id: number;
+  link_type: string;
+  label: string;
+  url: string;
+  created_at: string | null;
+}
