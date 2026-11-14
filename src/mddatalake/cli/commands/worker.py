@@ -11,8 +11,16 @@ console = Console()
 
 async def worker_command(once: bool = False, poll_interval: float = 5.0) -> int:
     """Drain the transfer queue, once or forever."""
+    import logging
+
     from mddatalake.core.config import settings
     from mddatalake.storage import get_transfer_worker
+
+    # Without this the worker's progress/information logs are discarded.
+    logging.basicConfig(
+        level=getattr(logging, settings.log_level.upper(), logging.INFO),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
 
     worker = get_transfer_worker()
     worker.poll_interval = poll_interval

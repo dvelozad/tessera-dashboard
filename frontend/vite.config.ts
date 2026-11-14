@@ -12,7 +12,9 @@ export default defineConfig({
   },
   server: {
     host: '0.0.0.0', // Listen on all interfaces (IPv4 + IPv6)
-    port: 3000,
+    port: 8420,
+    // Reached over the tailnet at http://bigmsi.tail500ddf.ts.net:8420
+    allowedHosts: ['bigmsi.tail500ddf.ts.net', '.tail500ddf.ts.net'],
     proxy: {
       '/api': {
         target: process.env.VITE_API_URL || 'http://localhost:8000',
