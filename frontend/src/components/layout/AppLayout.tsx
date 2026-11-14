@@ -49,19 +49,27 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           alignItems: 'center',
           gap: 1,
           px: '18px',
-          borderTop: '1px solid',
-          borderColor: 'divider',
-          bgcolor: 'background.default',
-          fontFamily: "'IBM Plex Mono', monospace",
+          borderTop: '1px solid var(--divider)',
+          background: 'var(--bg-canvas)',
+          fontFamily: 'var(--font-mono)',
           fontSize: '9.5px',
           fontWeight: 500,
           letterSpacing: '0.10em',
           textTransform: 'uppercase',
-          color: 'text.secondary',
+          color: 'var(--fg-muted)',
         }}
       >
-        <span style={{ color: 'var(--accent-500)' }}>●</span>
-        Cortes-Huerto Group · Max Planck Institute for Polymer Research · Mainz
+        <span
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            background: '#1fb878',
+            boxShadow: '0 0 0 3px rgba(31,184,120,0.12)',
+            flex: 'none',
+          }}
+        />
+        <span style={{ color: 'var(--fg-default)', fontWeight: 600 }}>AREPAS</span>
       </Box>
     </Box>
   );

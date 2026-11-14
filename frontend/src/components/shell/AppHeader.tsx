@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePalette } from '@/contexts/PaletteContext';
 import { initials } from '@/lib/design';
 
 const NAV = [
@@ -35,6 +36,7 @@ export const AppHeader: React.FC = () => {
   const location = useLocation();
   const { mode, toggleTheme } = useThemeContext();
   const { user, logout } = useAuth();
+  const { choices, setPalette, setDarkPalette } = usePalette();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -167,7 +169,7 @@ export const AppHeader: React.FC = () => {
               position: 'absolute',
               right: 0,
               top: 44,
-              width: 200,
+              width: 264,
               background: 'var(--bg-surface)',
               color: 'var(--fg-default)',
               border: '1px solid var(--border-default)',
@@ -208,6 +210,68 @@ export const AppHeader: React.FC = () => {
                   </button>
                 );
               })}
+            </div>
+
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: 'var(--fg-muted)',
+              }}
+            >
+              Palette
+            </span>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, margin: '0 -6px' }}>
+              {choices.map((option) => (
+                <button
+                  key={option.key}
+                  onClick={() =>
+                    mode === 'dark' ? setDarkPalette(option.key) : setPalette(option.key)
+                  }
+                  style={{
+                    all: 'unset',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: 6,
+                    borderRadius: 4,
+                    background: option.active ? 'var(--bg-hover)' : 'transparent',
+                  }}
+                >
+                  <span style={{ display: 'flex', borderRadius: 2, overflow: 'hidden', flex: 'none' }}>
+                    {option.swatch.map((color, index) => (
+                      <span key={index} style={{ width: 12, height: 20, background: color }} />
+                    ))}
+                  </span>
+                  <span style={{ flex: 1, display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: option.active ? 600 : 400,
+                        color: 'var(--fg-default)',
+                      }}
+                    >
+                      {option.label}
+                    </span>
+                    {option.note && (
+                      <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>{option.note}</span>
+                    )}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 11,
+                      color: 'var(--fg-muted)',
+                    }}
+                  >
+                    {option.hex}
+                  </span>
+                </button>
+              ))}
             </div>
           </div>
         )}

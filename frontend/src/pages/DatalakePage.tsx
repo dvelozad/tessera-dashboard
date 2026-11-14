@@ -85,7 +85,7 @@ export const DatalakePage: React.FC = () => {
   const [minQ, setMinQ] = useState(0);
   const [view, setView] = useState<View>('table');
   const [density, setDensity] = useState<Density>('comfortable');
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
@@ -402,13 +402,14 @@ export const DatalakePage: React.FC = () => {
         </div>
 
         <div
-          onClick={() => setFiltersOpen(true)}
+          onClick={() => setFiltersOpen((open) => !open)}
+          title={filtersOpen ? 'Hide filters' : 'Show filters'}
           style={{
             width: 42,
             height: '100%',
             flex: 'none',
             cursor: 'pointer',
-            display: filtersOpen ? 'none' : 'flex',
+            display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
@@ -433,7 +434,7 @@ export const DatalakePage: React.FC = () => {
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, minWidth: 0, marginLeft: filtersOpen ? 362 : 42, padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 12, transition: 'margin-left 320ms cubic-bezier(0.4,0,0.2,1)' }}>
+      <div style={{ flex: 1, minWidth: 0, marginLeft: 42, padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 12, transition: 'margin-left 320ms cubic-bezier(0.4,0,0.2,1)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--bg-surface)', border: '1px solid var(--border-default)', borderRadius: 2, boxShadow: 'var(--shadow-1)', padding: '0 14px', height: 40, flex: 'none' }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--fg-muted)" strokeWidth="1.5" strokeLinecap="round">
             <circle cx="11" cy="11" r="8" />

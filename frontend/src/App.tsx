@@ -14,6 +14,7 @@ import { LoginPage } from '@/pages/LoginPage';
 import { UserManagementPage } from '@/pages/admin/UserManagementPage';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ThemeContextProvider, useThemeContext } from '@/contexts/ThemeContext';
+import { PaletteContextProvider } from '@/contexts/PaletteContext';
 import { AuthContextProvider } from '@/contexts/AuthContext';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { AdminRoute } from '@/components/auth/AdminRoute';
@@ -70,9 +71,11 @@ function AppContent() {
 function App() {
   return (
     <ThemeContextProvider>
-      <AuthContextProvider>
-        <AppContent />
-      </AuthContextProvider>
+      <PaletteContextProvider>
+        <AuthContextProvider>
+          <AppContent />
+        </AuthContextProvider>
+      </PaletteContextProvider>
     </ThemeContextProvider>
   );
 }
