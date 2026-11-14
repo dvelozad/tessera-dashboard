@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 from mddatalake.auth.dependencies import get_current_user, require_contributor
 from mddatalake.db.models.project import Project
 from mddatalake.db.models.project_collaborator import ProjectCollaborator
+from mddatalake.db.models.project_link import ProjectLink
 from mddatalake.db.models.simulation_run import SimulationRun
 from mddatalake.db.models.user import User
 from mddatalake.db.session import get_db
@@ -303,4 +304,70 @@ async def remove_collaborator(
         raise HTTPException(status_code=404, detail="Collaborator not found.")
 
     await db.delete(collab)
+    await db.commit()
+
+
+# ── Project links ─────────────────────────────────────────────────────────────
+
+class ProjectLinkCreate(BaseModel):
+    link_type: str = "url"          # github | overleaf | dataset | url
+    label: str
+    url: str
+
+
+def _link_dict(link: ProjectLink) -> dict[str, Any]:
+    return {
+        "id": link.id,
+        "project_id": link.project_id,
+        "link_type": link.link_type,
+        "label": link.label,
+        "url": link.url,
+        "created_at": link.created_at.isoformat() if link.created_at else None,
+    }
+
+
+@router.get("/{project_id}/links")
+async def list_project_links(project_id: int, db: AsyncSession = Depends(get_db)) -> list[dict]:
+    result = await db.execute(
+        select(ProjectLink).where(ProjectLink.project_id == project_id).order_by(ProjectLink.id)
+    )
+    return [_link_dict(link) for link in result.scalars().all()]
+
+
+@router.post("/{project_id}/links", status_code=201)
+async def add_project_link(
+    project_id: int, payload: ProjectLinkCreate, db: AsyncSession = Depends(get_db)
+) -> dict:
+    project = (
+        await db.execute(select(Project).where(Project.id == project_id))
+    ).scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    link = ProjectLink(
+        project_id=project_id,
+        link_type=payload.link_type,
+        label=payload.label,
+        url=payload.url,
+    )
+    db.add(link)
+    await db.commit()
+    await db.refresh(link)
+    return _link_dict(link)
+
+
+@router.delete("/{project_id}/links/{link_id}", status_code=204)
+async def delete_project_link(
+    project_id: int, link_id: int, db: AsyncSession = Depends(get_db)
+) -> None:
+    link = (
+        await db.execute(
+            select(ProjectLink).where(
+                ProjectLink.id == link_id, ProjectLink.project_id == project_id
+            )
+        )
+    ).scalar_one_or_none()
+    if not link:
+        raise HTTPException(status_code=404, detail="Link not found")
+    await db.delete(link)
     await db.commit()

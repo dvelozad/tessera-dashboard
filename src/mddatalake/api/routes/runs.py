@@ -16,7 +16,7 @@ from sqlalchemy.orm import selectinload
 
 from mddatalake.core.config import settings
 from mddatalake.core.enums import ArtifactType, EnsembleType
-from mddatalake.db.models import Artifact, SimulationRun
+from mddatalake.db.models import Artifact, SimulationRun, Tag
 from mddatalake.db.session import get_db
 from mddatalake.storage import FilesystemBackend, get_storage_backend
 from mddatalake.storage.keys import cas_key
@@ -891,3 +891,59 @@ def _classify_artifact_file(filename: str) -> ArtifactType:
 
     # Default
     return ArtifactType.OTHER
+
+
+# ── Run tags ──────────────────────────────────────────────────────────────────
+
+class TagCreate(BaseModel):
+    tag_name: str
+
+
+@router.get("/runs/{run_id}/tags")
+async def list_run_tags(run_id: int, db: AsyncSession = Depends(get_db)) -> list[str]:
+    result = await db.execute(
+        select(Tag.tag_name).where(Tag.simulation_run_id == run_id).order_by(Tag.tag_name)
+    )
+    return [row[0] for row in result.all()]
+
+
+@router.post("/runs/{run_id}/tags", status_code=201)
+async def add_run_tag(
+    run_id: int, payload: TagCreate, db: AsyncSession = Depends(get_db)
+) -> dict:
+    run = (
+        await db.execute(select(SimulationRun).where(SimulationRun.id == run_id))
+    ).scalar_one_or_none()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    name = payload.tag_name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="tag_name cannot be empty")
+
+    existing = (
+        await db.execute(
+            select(Tag).where(Tag.simulation_run_id == run_id, Tag.tag_name == name)
+        )
+    ).scalar_one_or_none()
+    if existing:
+        return {"run_id": run_id, "tag_name": name, "status": "exists"}
+
+    db.add(Tag(simulation_run_id=run_id, tag_name=name))
+    await db.commit()
+    return {"run_id": run_id, "tag_name": name, "status": "added"}
+
+
+@router.delete("/runs/{run_id}/tags/{tag_name}", status_code=204)
+async def delete_run_tag(
+    run_id: int, tag_name: str, db: AsyncSession = Depends(get_db)
+) -> None:
+    tag = (
+        await db.execute(
+            select(Tag).where(Tag.simulation_run_id == run_id, Tag.tag_name == tag_name)
+        )
+    ).scalar_one_or_none()
+    if not tag:
+        raise HTTPException(status_code=404, detail="Tag not found")
+    await db.delete(tag)
+    await db.commit()

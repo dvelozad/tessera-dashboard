@@ -79,7 +79,28 @@ tessera_ctl.py projects create --name LJ_GC \
 
 Fields that exist today: project `name`, `description`, `pi_name`,
 `institution`, `funding_source`, `grant_number`, `keywords`, `is_public`; run
-`run_name`, `description`. Anything else must be added to the API first.
+`run_name`, `description`.
+
+## Links and labels
+
+A project carries links to its repository, dataset or manuscript; a run carries
+free-form labels:
+
+```bash
+# repository / dataset / manuscript URLs on a project
+tessera_ctl.py raw POST /projects/2/links \
+  --data '{"link_type":"github","label":"dvelozad/arepas","url":"https://github.com/dvelozad/arepas"}'
+tessera_ctl.py raw GET  /projects/2/links
+tessera_ctl.py raw DELETE /projects/2/links/1
+
+# labels on a run (production, paper-1, needs-review, ...)
+tessera_ctl.py raw POST /runs/42/tags --data '{"tag_name":"production"}'
+tessera_ctl.py raw GET  /runs/42/tags
+tessera_ctl.py raw DELETE /runs/42/tags/production
+```
+
+`link_type` is one of `github`, `overleaf`, `dataset`, `url`. Adding the same
+tag twice is a no-op, so scripts can be re-run safely.
 
 ## Rules
 
@@ -110,5 +131,7 @@ Fields that exist today: project `name`, `description`, `pi_name`,
 | `tessera_ctl.py artifacts upload <run_id> <files...>` | attach files |
 | `tessera_ctl.py push <dir> --project X` | ingest a directory |
 | `tessera_ctl.py raw GET /runs?limit=5` | anything not modelled here |
+| `tessera_ctl.py raw POST /projects/2/links --data '{...}'` | attach a link |
+| `tessera_ctl.py raw POST /runs/42/tags --data '{...}'` | label a run |
 
 Exit status is non-zero on failure with the API's error text on stderr.

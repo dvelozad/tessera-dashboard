@@ -38,3 +38,7 @@ class Project(Base):
     collaborators: Mapped[list["ProjectCollaborator"]] = relationship(
         "ProjectCollaborator", back_populates="project", cascade="all, delete-orphan"
     )
+
+    links: Mapped[list["ProjectLink"]] = relationship(
+        "ProjectLink", back_populates="project", cascade="all, delete-orphan"
+    )
