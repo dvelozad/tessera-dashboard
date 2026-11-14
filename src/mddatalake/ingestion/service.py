@@ -252,7 +252,7 @@ class IngestionService:
         """Stage 3: Process artifacts (checksum, compress, upload)."""
         processed_artifacts = []
 
-        from mddatalake.utils.files import is_ingestable
+        from mddatalake.utils.files import is_ingestable, resolve_for_read
 
         for artifact_info in artifacts_info:
             file_path = Path(artifact_info["file_path"])
@@ -260,15 +260,21 @@ class IngestionService:
             if not file_path.exists() or not is_ingestable(file_path.name):
                 continue
 
+            # Follow symlinks: ingest the content, not a pointer to it.
+            readable = resolve_for_read(file_path)
+            if readable is None:
+                logger.warning(f"Skipping unreadable artifact {file_path}")
+                continue
+
             # Compute checksum
-            checksum = compute_checksum(file_path)
+            checksum = compute_checksum(readable)
 
             # Get file size
-            file_size = file_path.stat().st_size
+            file_size = readable.stat().st_size
 
             # Upload to storage under the content-addressed key
             storage_key = await self.storage.upload(
-                file_path, cas_key(checksum, file_path.name), checksum
+                readable, cas_key(checksum, file_path.name), checksum
             )
 
             # Prefer the real origin (host:/path) over the staging path.

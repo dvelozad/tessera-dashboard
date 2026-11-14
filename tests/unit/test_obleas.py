@@ -177,3 +177,16 @@ def test_build_lammps_config_comma_separates_types():
         label="x",
     )
     assert "select all type 1,2,3" in config
+
+
+def test_resolve_for_read_follows_symlinks(tmp_path: Path):
+    """Simulation dirs symlink shared data files; the lake must store bytes."""
+    from mddatalake.utils.files import resolve_for_read
+
+    real = _write(tmp_path, "data.real", "0 0 0\n")
+    link = tmp_path / "data.lmp"
+    link.symlink_to(real)
+
+    assert resolve_for_read(link) == real
+    assert resolve_for_read(tmp_path / "missing") is None
+    assert resolve_for_read(tmp_path) is None

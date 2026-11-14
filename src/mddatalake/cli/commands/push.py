@@ -90,7 +90,8 @@ async def push_command(
     parser = LammpsParser(directory) if engine_name == "lammps" else GromacsParser(directory)
     metadata = parser.parse()
 
-    from mddatalake.utils.files import is_ingestable
+    from mddatalake.storage.keys import cas_key
+    from mddatalake.utils.files import is_ingestable, resolve_for_read
 
     artifacts: list[dict[str, Any]] = []
     for info in metadata.get("artifacts", []):
@@ -98,15 +99,19 @@ async def push_command(
         if not file_path.exists() or not is_ingestable(file_path.name):
             continue
 
-        size = file_path.stat().st_size
-        console.print(f"  hashing {file_path.name} ({size / 1e9:.2f} GB)")
-        checksum = compute_checksum(file_path)
+        # Read through symlinks: the lake stores bytes, not pointers.
+        readable = resolve_for_read(file_path)
+        if readable is None:
+            console.print(f"  [yellow]skipping broken link {file_path.name}[/yellow]")
+            continue
 
-        from mddatalake.storage.keys import cas_key
+        size = readable.stat().st_size
+        console.print(f"  hashing {file_path.name} ({size / 1e9:.2f} GB)")
+        checksum = compute_checksum(readable)
 
         key = cas_key(checksum, file_path.name)
         console.print(f"  uploading {file_path.name} -> {key}")
-        await storage.upload(file_path, key, checksum)
+        await storage.upload(readable, key, checksum)
 
         artifacts.append(
             {
