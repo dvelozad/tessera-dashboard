@@ -57,3 +57,12 @@ async def test_filesystem_backend_deduplication(tmp_path: Path):
 
     # Verify same storage key (deduplication)
     assert key1 == key2
+
+
+def test_artifact_size_column_is_64_bit():
+    """A 3 GB trajectory overflowed the old 32-bit column at commit time."""
+    from sqlalchemy import BigInteger
+
+    from mddatalake.db.models import Artifact
+
+    assert isinstance(Artifact.__table__.c.file_size_bytes.type, BigInteger)

@@ -79,6 +79,59 @@ def pull(
 
 
 @app.command()
+def push(
+    directory: Path = typer.Argument(..., help="Run directory on this machine"),
+    project: str = typer.Option(..., "--project", "-p", help="Project name"),
+    name: str = typer.Option(None, "--name", "-n", help="Run name (defaults to the directory)"),
+    description: str = typer.Option(None, "--description", "-d", help="Run description"),
+    record: Path = typer.Option(
+        None, "--record", help="Where to write the import record (default <run>.json)"
+    ),
+    source: str = typer.Option(
+        None, "--source", help="Provenance label; defaults to the absolute directory path"
+    ),
+):
+    """
+    Upload a run to the cold tier from the machine that holds it.
+
+    Use this on a data host that already has rclone access to the same Drive:
+    the trajectories go straight there instead of being copied to the server
+    first. Move the emitted JSON record to the server and import it.
+
+    Example:
+        tessera push /data/.../LJ_GC/PROD -p LJ_GC --record PROD.json
+    """
+    from mddatalake.cli.commands.push import push_command
+
+    asyncio.run(
+        push_command(
+            directory=directory,
+            project_name=project,
+            run_name=name,
+            description=description,
+            record_path=record,
+            source_label=source,
+        )
+    )
+
+
+@app.command("import")
+def import_record(
+    record: Path = typer.Argument(..., help="JSON record produced by `tessera push`"),
+    run_name: str = typer.Option(None, "--name", "-n", help="Override the run name"),
+):
+    """
+    Register a run pushed from another machine.
+
+    Example:
+        tessera import PROD.json
+    """
+    from mddatalake.cli.commands.import_record import import_command
+
+    asyncio.run(import_command(record=record, run_name=run_name))
+
+
+@app.command()
 def worker(
     once: bool = typer.Option(False, "--once", help="Process the queue once and exit"),
     poll_interval: float = typer.Option(5.0, "--poll-interval", help="Seconds between polls"),

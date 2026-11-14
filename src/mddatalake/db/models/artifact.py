@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import BigInteger, DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from mddatalake.core.enums import ArtifactType
@@ -31,7 +31,8 @@ class Artifact(Base):
     # checksum and shared by several runs.
     storage_key: Mapped[str] = mapped_column(String(512), nullable=False, index=True)
     checksum_sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    file_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    # BIGINT: trajectories routinely exceed the 2 GiB signed-32-bit limit.
+    file_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     compression: Mapped[str | None] = mapped_column(String(50))  # gzip, zstd, xz, none
 
     # Tier state: "pending" (hot cache only, waiting for the transfer worker),

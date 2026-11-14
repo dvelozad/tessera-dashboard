@@ -228,16 +228,36 @@ class IngestionService:
         except Exception as e:
             raise IngestionError(f"Failed to extract metadata: {e}")
 
+    async def import_record(self, record: dict[str, Any]) -> int:
+        """Create a run from a record produced by ``tessera push`` elsewhere.
+
+        The blobs already exist on the cold tier, so nothing is uploaded or
+        downloaded here: this only writes metadata.
+        """
+        run_id = await self._create_database_records(
+            project_name=record["project"],
+            run_name=record["run"],
+            description=record.get("description"),
+            working_directory=record.get("source") or "",
+            metadata=record.get("metadata", {}),
+            artifacts_data=record["artifacts"],
+            storage_state="stored",
+        )
+        await self.db.commit()
+        return run_id
+
     async def _process_artifacts(
         self, directory: Path, artifacts_info: list[dict[str, Any]], source: str | None = None
     ) -> list[dict[str, Any]]:
         """Stage 3: Process artifacts (checksum, compress, upload)."""
         processed_artifacts = []
 
+        from mddatalake.utils.files import is_ingestable
+
         for artifact_info in artifacts_info:
             file_path = Path(artifact_info["file_path"])
 
-            if not file_path.exists():
+            if not file_path.exists() or not is_ingestable(file_path.name):
                 continue
 
             # Compute checksum
@@ -284,8 +304,10 @@ class IngestionService:
         description: str | None = None,
         slurm_job_id: str | None = None,
         compute_node: str | None = None,
+        storage_state: str | None = None,
     ) -> int:
         """Stage 4: Create database records in a transaction."""
+        state = storage_state or self.storage_state
         # Find or create project
         project = await self._get_or_create_project(project_name)
 
@@ -376,10 +398,8 @@ class IngestionService:
                 checksum_sha256=artifact_data["checksum_sha256"],
                 file_size_bytes=artifact_data["file_size_bytes"],
                 compression=artifact_data["compression"],
-                storage_state=self.storage_state,
-                remote_path=artifact_data["storage_key"]
-                if self.storage_state == "stored"
-                else None,
+                storage_state=state,
+                remote_path=artifact_data["storage_key"] if state == "stored" else None,
             )
             self.db.add(artifact)
 

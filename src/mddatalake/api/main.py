@@ -4,7 +4,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -90,6 +90,11 @@ if _frontend_dir and (_frontend_dir / "index.html").is_file():
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_spa(full_path: str):
         """Serve a static file when it exists, otherwise the SPA entry point."""
+        # Never answer API requests with HTML: an unknown API path must be a
+        # 404, not a 200 that silently hands the browser the app shell.
+        if full_path.startswith(("api/", "docs", "redoc", "openapi.json", "health")):
+            raise HTTPException(status_code=404, detail="Not found")
+
         if full_path:
             candidate = (_frontend_dir / full_path).resolve()
             try:
