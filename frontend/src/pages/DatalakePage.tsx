@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import apiClient from '@/services/api';
 import type { SimulationRun } from '@/types/visualization';
 import {
@@ -78,6 +78,13 @@ const FilterCheck: React.FC<CheckProps> = ({ checked, onClick, label, count, mon
 
 export const DatalakePage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  // Arriving from a project's "Show in datalake" pre-filters to that project.
+  const [projectFilter, setProjectFilter] = useState<string | null>(null);
+  useEffect(() => {
+    const incoming = (location.state as { projectName?: string } | null)?.projectName;
+    if (incoming) setProjectFilter(incoming);
+  }, [location.state]);
 
   const [q, setQ] = useState('');
   const [engines, setEngines] = useState<string[]>([]);
@@ -118,17 +125,18 @@ export const DatalakePage: React.FC = () => {
   const filtered = useMemo(
     () =>
       searched.filter((run) => {
+        if (projectFilter && run.project_name !== projectFilter) return false;
         if (engines.length && !engines.includes(engineBucket(run.engine?.name))) return false;
         if (methods.length && !methods.includes(methodOf(run.simulation_method))) return false;
         if ((run.completeness_score ?? 0) < minQ) return false;
         return true;
       }),
-    [searched, engines, methods, minQ]
+    [searched, engines, methods, minQ, projectFilter]
   );
 
   const projectCount = new Set(filtered.map((r) => r.project_name)).size;
   const ensembleCount = new Set(filtered.map((r) => r.ensemble).filter(Boolean)).size;
-  const activeCount = engines.length + methods.length + (minQ ? 1 : 0);
+  const activeCount = engines.length + methods.length + (minQ ? 1 : 0) + (projectFilter ? 1 : 0);
   const hasActive = activeCount > 0;
 
   const perPage = 20;
@@ -141,6 +149,7 @@ export const DatalakePage: React.FC = () => {
   const toggleMethod = (code: MethodCode) =>
     setMethods((list) => (list.includes(code) ? list.filter((m) => m !== code) : [...list, code]));
   const clearFilters = () => {
+    setProjectFilter(null);
     setEngines([]);
     setMethods([]);
     setMinQ(0);
@@ -558,6 +567,12 @@ export const DatalakePage: React.FC = () => {
 
         {hasActive && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', flex: 'none' }}>
+            {projectFilter && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '3px 6px 3px 10px', borderRadius: 2, background: 'var(--bg-selected)', color: 'var(--primary-800)' }}>
+                project: {projectFilter}
+                <button onClick={() => setProjectFilter(null)} style={{ all: 'unset', cursor: 'pointer', display: 'flex' }}>×</button>
+              </span>
+            )}
             {engines.map((name) => (
               <span key={`e-${name}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '3px 6px 3px 10px', borderRadius: 2, background: 'var(--bg-selected)', color: 'var(--primary-800)' }}>
                 {name}

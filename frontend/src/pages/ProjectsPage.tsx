@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
 import apiClient from '@/services/api';
 import type { Project, SimulationRun } from '@/types/visualization';
+import { EditProjectDialog } from '@/components/projects/EditProjectDialog';
 import {
   EYEBROW,
   METHOD_LABEL,
@@ -38,6 +39,48 @@ const actionButton = (primary = false): React.CSSProperties => ({
   boxShadow: primary ? 'inset 0 1px 0 rgba(255,255,255,0.12)' : undefined,
 });
 
+/** Same button, but inverts to the primary colour on hover like the rows do. */
+const ActionButton: React.FC<{
+  children: React.ReactNode;
+  onClick?: () => void;
+  variant?: 'outline' | 'primary';
+}> = ({ children, onClick, variant = 'outline' }) => {
+  const [hover, setHover] = useState(false);
+  const primary = variant === 'primary';
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        all: 'unset',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        fontSize: 13,
+        fontWeight: 600,
+        whiteSpace: 'nowrap',
+        padding: '6px 12px',
+        borderRadius: 5,
+        border: `1px solid ${primary || hover ? 'var(--primary-500)' : 'var(--border-default)'}`,
+        background: primary
+          ? hover
+            ? 'var(--primary-600)'
+            : 'var(--primary-500)'
+          : hover
+            ? 'var(--primary-500)'
+            : 'transparent',
+        color: primary || hover ? '#fff' : 'var(--fg-default)',
+        boxShadow: primary ? 'inset 0 1px 0 rgba(255,255,255,0.12)' : undefined,
+        transition: 'background 120ms, color 120ms, border-color 120ms',
+      }}
+    >
+      {children}
+    </button>
+  );
+};
+
 export const ProjectsPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -50,6 +93,7 @@ export const ProjectsPage: React.FC = () => {
   const [newDesc, setNewDesc] = useState('');
   const [busy, setBusy] = useState(false);
   const [hoverId, setHoverId] = useState<number | null>(null);
+  const [editing, setEditing] = useState<Project | null>(null);
 
   // Returning from a run: land on the project it came from.
   React.useEffect(() => {
@@ -100,6 +144,36 @@ export const ProjectsPage: React.FC = () => {
       setBusy(false);
     }
   };
+
+  const stats = (() => {
+    const temps = activeRuns
+      .map((run) => run.temperature_target)
+      .filter((value): value is number => typeof value === 'number');
+    const atoms = activeRuns.map((run) => run.system?.n_atoms || 0).filter((value) => value > 0);
+    const totalNs = activeRuns.reduce((sum, run) => sum + (run.total_time || 0), 0);
+    const scores = activeRuns.map((run) => run.completeness_score || 0);
+    return {
+      engines: [...new Set(activeRuns.map((run) => run.engine?.name).filter(Boolean))],
+      ensembles: [...new Set(activeRuns.map((run) => run.ensemble).filter(Boolean))],
+      temperature:
+        temps.length > 0
+          ? `${Math.min(...temps)}–${Math.max(...temps)} K`
+          : '—',
+      totalTime: totalNs > 0 ? fmtLength(totalNs) : '—',
+      atoms:
+        atoms.length > 0
+          ? `${fmtAtoms(Math.min(...atoms))}–${fmtAtoms(Math.max(...atoms))}`
+          : '—',
+      meanQuality: scores.length
+        ? String(Math.round(scores.reduce((a, b) => a + b, 0) / scores.length))
+        : '—',
+      lastRun: activeRuns
+        .map((run) => run.created_at)
+        .filter(Boolean)
+        .sort()
+        .pop(),
+    };
+  })();
 
   const tabs: { key: ProjectTab; label: string; count?: number }[] = [
     { key: 'runs', label: 'Runs', count: activeRuns.length },
@@ -295,12 +369,15 @@ export const ProjectsPage: React.FC = () => {
                     )}
                   </div>
                   <div style={{ display: 'flex', gap: 8, flex: 'none' }}>
-                    <button onClick={() => navigate('/')} style={actionButton()}>
-                      Open in datalake
-                    </button>
-                    <button onClick={() => navigate('/upload')} style={actionButton()}>
+                    <ActionButton
+                      onClick={() => navigate('/', { state: { projectName: active.name } })}
+                    >
+                      Show in datalake
+                    </ActionButton>
+                    <ActionButton onClick={() => setEditing(active)}>Edit</ActionButton>
+                    <ActionButton variant="primary" onClick={() => navigate('/upload')}>
                       Upload run
-                    </button>
+                    </ActionButton>
                   </div>
                 </div>
               </div>
@@ -463,6 +540,13 @@ export const ProjectsPage: React.FC = () => {
                       ['Visibility', active.is_public ? 'Public' : 'Private'],
                       ['Runs', String(activeRuns.length)],
                       ['Collaborators', String(active.collaborators?.length ?? 0)],
+                      ['Engines', stats.engines.join(' · ') || '—'],
+                      ['Ensembles', stats.ensembles.join(' · ') || '—'],
+                      ['Temperature range', stats.temperature],
+                      ['Simulated time', stats.totalTime],
+                      ['System size', stats.atoms],
+                      ['Mean quality', stats.meanQuality],
+                      ['Last run', stats.lastRun ? fmtDate(stats.lastRun) : '—'],
                     ].map(([label, value]) => (
                       <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         <span style={EYEBROW}>{label}</span>
@@ -476,6 +560,19 @@ export const ProjectsPage: React.FC = () => {
           )}
         </div>
       </div>
+
+      {editing && (
+        <EditProjectDialog
+          project={editing}
+          onClose={() => setEditing(null)}
+          onSubmit={async (data) => {
+            await apiClient.updateProject(editing.id, data);
+            await queryClient.invalidateQueries({ queryKey: ['projects'] });
+            await queryClient.invalidateQueries({ queryKey: ['runs', 'projects'] });
+            setEditing(null);
+          }}
+        />
+      )}
 
       {creating && (
         <div
