@@ -1,6 +1,7 @@
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useEffect } from 'react';
 import { Box } from '@mui/material';
-import { Navigation } from './Navigation';
+import { AppHeader } from '@/components/shell/AppHeader';
+import { useThemeContext } from '@/contexts/ThemeContext';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -9,23 +10,32 @@ interface AppLayoutProps {
 const FOOTER_HEIGHT = 28;
 
 export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
+  const { mode } = useThemeContext();
+
+  // The Voxel tokens key off [data-theme] on <html>.
+  useEffect(() => {
+    document.documentElement.dataset.theme = mode;
+  }, [mode]);
+
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      <Navigation />
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+      <AppHeader />
       <Box
         component="main"
         sx={{
           flex: 1,
+          minHeight: 0,
           display: 'flex',
           flexDirection: 'column',
           overflow: 'auto',
-          // Reserve space for the fixed footer
           pb: `${FOOTER_HEIGHT}px`,
+          background: 'var(--bg-canvas)',
+          color: 'var(--fg-default)',
+          fontFamily: 'var(--font-sans)',
         }}
       >
         {children}
       </Box>
-      {/* Affiliation footer — fixed to bottom of viewport */}
       <Box
         component="footer"
         sx={{
@@ -48,41 +58,10 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           letterSpacing: '0.10em',
           textTransform: 'uppercase',
           color: 'text.secondary',
-          lineHeight: 1,
         }}
       >
-        <Box
-          component="span"
-          sx={{
-            width: 6,
-            height: 6,
-            borderRadius: '50%',
-            bgcolor: '#1fb878',
-            boxShadow: '0 0 0 3px rgba(31, 184, 120, 0.12)',
-            flexShrink: 0,
-          }}
-        />
-        <Box component="span" sx={{ color: 'text.primary', fontWeight: 600 }}>
-          Cortes-Huerto Group
-        </Box>
-        <Box component="span" sx={{ color: 'text.secondary' }}>
-          ·
-        </Box>
-        <Box
-          component="span"
-          sx={{ display: { xs: 'none', sm: 'inline' } }}
-        >
-          Max Planck Institute for Polymer Research
-        </Box>
-        <Box
-          component="span"
-          sx={{ display: { xs: 'none', sm: 'inline' }, color: 'text.secondary' }}
-        >
-          ·
-        </Box>
-        <Box component="span">
-          Mainz
-        </Box>
+        <span style={{ color: 'var(--accent-500)' }}>●</span>
+        Cortes-Huerto Group · Max Planck Institute for Polymer Research · Mainz
       </Box>
     </Box>
   );

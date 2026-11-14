@@ -200,6 +200,10 @@ async def list_runs(
     # Apply pagination
     stmt = stmt.limit(limit).offset(offset)
 
+    # The datalake table groups by project, so load it eagerly instead of
+    # letting each row trigger a lazy load.
+    stmt = stmt.options(selectinload(SimulationRun.project))
+
     # Execute query
     result = await db.execute(stmt)
     runs = result.scalars().all()
@@ -211,6 +215,8 @@ async def list_runs(
             {
                 "id": run.id,
                 "run_name": run.run_name,
+                "project_id": run.project_id,
+                "project_name": run.project.name if run.project else "Unknown",
                 "ensemble": run.ensemble.value,
                 "simulation_method": run.simulation_method.value if run.simulation_method else None,
                 "particle_insertion": run.particle_insertion,

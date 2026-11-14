@@ -1,0 +1,399 @@
+/* =========================================================================
+   VOXEL DESIGN SYSTEM — colors & type
+   NERV Lab · Universidad Nacional de Colombia
+   ========================================================================= */
+
+/* ---------- Webfonts ---------- */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Serif:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap");
+
+:root {
+  /* =====================================================================
+     COLOR — RAW PALETTE
+     A scientific / instrumentation palette: deep ink primaries, phosphor
+     accent (CRT/oscilloscope green), warm signal accents.
+     ===================================================================== */
+
+  /* Ink scale — neutral / surface */
+  --ink-0:  #ffffff;
+  --ink-50: #f6f7f8;     /* page bg light */
+  --ink-100:#eceff2;     /* card bg / dividers */
+  --ink-200:#d6dbe0;
+  --ink-300:#b3bcc5;
+  --ink-400:#8893a0;
+  --ink-500:#5d6975;     /* secondary text */
+  --ink-600:#3f4a55;
+  --ink-700:#283038;     /* body text */
+  --ink-800:#181d23;     /* dark surface */
+  --ink-900:#0d1117;     /* deepest surface */
+
+  /* Primary — Indigo Slate (deep, sober, academic) */
+  --primary-50:  #eef2fb;
+  --primary-100: #d4dcf2;
+  --primary-200: #aab9e3;
+  --primary-300: #7c92d1;
+  --primary-400: #4f6cbe;
+  --primary-500: #2f4ea8;   /* primary brand */
+  --primary-600: #233e8c;
+  --primary-700: #1b3070;
+  --primary-800: #142254;
+  --primary-900: #0c1638;
+
+  /* Accent — Phosphor (signal / data) */
+  --accent-300: #a3f2c8;
+  --accent-400: #5fdca0;
+  --accent-500: #1fb878;   /* charts, active states, "live" */
+  --accent-600: #16936a;
+  --accent-700: #0e6e54;
+
+  /* Signal — warm, used for warnings, simulation tags */
+  --signal-300: #ffd089;
+  --signal-500: #f5921b;   /* warning */
+  --signal-600: #c87005;
+
+  /* Critical */
+  --critical-300: #f7b6b6;
+  --critical-500: #d63b3b;
+  --critical-700: #951f1f;
+
+  /* Info / link */
+  --info-500: #2086d4;
+
+  /* =====================================================================
+     SEMANTIC COLOR — light theme (default)
+     ===================================================================== */
+
+  --bg-canvas:    var(--ink-50);   /* page background */
+  --bg-surface:   var(--ink-0);    /* cards, modals */
+  --bg-sunken:    var(--ink-100);  /* tables, inset wells */
+  --bg-hover:     #eef2fb;         /* hovered surface (primary-50) */
+  --bg-selected:  #d4dcf2;         /* selected row (primary-100) */
+  --bg-inverse:   var(--ink-900);  /* dark chrome on light page */
+
+  --fg-default:   var(--ink-800);  /* body text */
+  --fg-muted:     var(--ink-500);  /* secondary text, captions */
+  --fg-subtle:    var(--ink-400);  /* placeholders, helpers */
+  --fg-on-primary:var(--ink-0);
+  --fg-on-accent: var(--ink-900);
+  --fg-link:      var(--primary-600);
+  --fg-link-hover:var(--primary-700);
+
+  --border-default:    var(--ink-200);
+  --border-subtle:     var(--ink-100);
+  --border-strong:     var(--ink-400);
+  --border-focus:      var(--primary-500);
+  --divider:           var(--ink-200);
+
+  --primary:           var(--primary-500);
+  --primary-hover:     var(--primary-600);
+  --primary-pressed:   var(--primary-700);
+  --on-primary:        var(--ink-0);
+
+  --accent:            var(--accent-500);
+  --accent-hover:      var(--accent-600);
+  --on-accent:         var(--ink-900);
+
+  /* Status — for run quality bars, completeness, badges */
+  --status-ok:      var(--accent-500);
+  --status-warn:    var(--signal-500);
+  --status-error:   var(--critical-500);
+  --status-info:    var(--info-500);
+  --status-neutral: var(--ink-400);
+
+  /* Method-tag colors (for ATOMISTIC / H-AdResS / COARSE_GRAINED tags) */
+  --tag-atomistic:    var(--primary-500);
+  --tag-hadress:      #7d3cc6;        /* violet */
+  --tag-coarse:       var(--accent-600);
+  --tag-united-atom:  var(--signal-600);
+  --tag-mc:           #c44a85;        /* magenta — Monte Carlo */
+
+  /* Code / data surfaces */
+  --code-bg:  #f3f4f6;
+  --code-fg:  var(--ink-800);
+  --code-comment: var(--ink-500);
+  --code-keyword: var(--primary-700);
+  --code-string:  var(--accent-700);
+  --code-number:  var(--signal-600);
+
+  /* =====================================================================
+     SPACING — 4px base scale
+     ===================================================================== */
+  --space-0:  0;
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* =====================================================================
+     RADII — restrained, technical
+     ===================================================================== */
+  --radius-none: 0;
+  --radius-xs:   2px;   /* default — tags, inputs, small chips */
+  --radius-sm:   4px;   /* buttons, cards */
+  --radius-md:   6px;   /* dialogs, panels */
+  --radius-lg:   10px;  /* large feature cards */
+  --radius-pill: 999px; /* status pills */
+
+  /* =====================================================================
+     ELEVATION — flat-ish, single-direction shadow
+     ===================================================================== */
+  --shadow-0: none;
+  --shadow-1: 0 1px 0 rgba(20, 34, 84, 0.04), 0 1px 2px rgba(20, 34, 84, 0.06);
+  --shadow-2: 0 1px 0 rgba(20, 34, 84, 0.04), 0 2px 6px rgba(20, 34, 84, 0.08);
+  --shadow-3: 0 2px 0 rgba(20, 34, 84, 0.04), 0 6px 16px rgba(20, 34, 84, 0.10);
+  --shadow-4: 0 4px 0 rgba(20, 34, 84, 0.04), 0 12px 28px rgba(20, 34, 84, 0.14);
+  --shadow-inset: inset 0 1px 0 rgba(20, 34, 84, 0.05);
+  --shadow-focus: 0 0 0 3px rgba(47, 78, 168, 0.25);
+
+  /* =====================================================================
+     TYPE — IBM Plex (Sans / Serif / Mono)
+     ===================================================================== */
+
+  --font-sans:    "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif:   "IBM Plex Serif", Georgia, "Times New Roman", serif;
+  --font-mono:    "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* Display weights */
+  --weight-light:    300;
+  --weight-regular:  400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+
+  /* Type scale (modular ~1.2) — values are font-size / line-height */
+  --text-xs:    11px;   --lh-xs:    16px;
+  --text-sm:    13px;   --lh-sm:    20px;
+  --text-base:  14px;   --lh-base:  22px;
+  --text-md:    16px;   --lh-md:    24px;
+  --text-lg:    18px;   --lh-lg:    26px;
+  --text-xl:    22px;   --lh-xl:    30px;
+  --text-2xl:   28px;   --lh-2xl:   36px;
+  --text-3xl:   36px;   --lh-3xl:   44px;
+  --text-4xl:   48px;   --lh-4xl:   56px;
+  --text-5xl:   64px;   --lh-5xl:   72px;
+
+  /* Letter-spacing — Plex is well-spaced; only mild tracking */
+  --track-tight:  -0.02em;
+  --track-normal:  0;
+  --track-wide:    0.04em;
+  --track-mono:   -0.005em;
+  --track-allcaps: 0.08em;
+
+  /* =====================================================================
+     MOTION — short, function-first
+     ===================================================================== */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --duration-fast:    120ms;
+  --duration-normal:  200ms;
+  --duration-slow:    320ms;
+
+  /* =====================================================================
+     LAYOUT
+     ===================================================================== */
+  --header-h:       56px;
+  --sidebar-w:      320px;
+  --sidebar-rail-w: 42px;
+  --container-max:  1440px;
+  --content-max:    72ch;
+}
+
+/* =========================================================================
+   DARK THEME — paired with the same primary/accent
+   ========================================================================= */
+:root[data-theme="dark"], .theme-dark {
+  --bg-canvas:   var(--ink-900);
+  --bg-surface:  #15191f;     /* slightly lifted */
+  --bg-sunken:   #0a0d12;
+  --bg-hover:    #1c2230;
+  --bg-selected: #20305a;
+  --bg-inverse:  var(--ink-0);
+
+  --fg-default:  #e6eaf0;
+  --fg-muted:    #9aa3b1;
+  --fg-subtle:   #6c7280;
+
+  --border-default: #2a313c;
+  --border-subtle:  #1f242c;
+  --border-strong:  #4a5360;
+  --divider:        #2a313c;
+
+  --primary:        #6f8bdb;     /* lifted for contrast on dark */
+  --primary-hover:  #8aa1e3;
+  --primary-pressed:#5670c4;
+  --fg-link:        #8aa1e3;
+  --fg-link-hover:  #a7b8eb;
+
+  --code-bg:        #11151b;
+  --code-fg:        #e6eaf0;
+
+  --shadow-1: 0 1px 0 rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.5);
+  --shadow-2: 0 1px 0 rgba(0,0,0,0.4), 0 2px 6px rgba(0,0,0,0.55);
+  --shadow-3: 0 2px 0 rgba(0,0,0,0.4), 0 6px 16px rgba(0,0,0,0.6);
+  --shadow-4: 0 4px 0 rgba(0,0,0,0.4), 0 12px 28px rgba(0,0,0,0.7);
+  --shadow-focus: 0 0 0 3px rgba(138, 161, 227, 0.35);
+}
+
+/* =========================================================================
+   BASE / RESET
+   ========================================================================= */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg-canvas);
+  color: var(--fg-default);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--lh-base);
+  font-weight: var(--weight-regular);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* =========================================================================
+   SEMANTIC TYPE STYLES
+   These map to product roles, not just a scale.
+   ========================================================================= */
+
+.t-display {            /* hero, marketing only */
+  font-family: var(--font-serif);
+  font-size: var(--text-5xl);
+  line-height: var(--lh-5xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--track-tight);
+}
+
+.t-h1, h1 {
+  font-family: var(--font-sans);
+  font-size: var(--text-3xl);
+  line-height: var(--lh-3xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--track-tight);
+  margin: 0;
+}
+
+.t-h2, h2 {
+  font-family: var(--font-sans);
+  font-size: var(--text-2xl);
+  line-height: var(--lh-2xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--track-tight);
+  margin: 0;
+}
+
+.t-h3, h3 {
+  font-size: var(--text-xl);
+  line-height: var(--lh-xl);
+  font-weight: var(--weight-semibold);
+  margin: 0;
+}
+
+.t-h4, h4 {
+  font-size: var(--text-lg);
+  line-height: var(--lh-lg);
+  font-weight: var(--weight-semibold);
+  margin: 0;
+}
+
+.t-h5, h5 {
+  font-size: var(--text-md);
+  line-height: var(--lh-md);
+  font-weight: var(--weight-semibold);
+  margin: 0;
+}
+
+.t-eyebrow {            /* small all-caps category labels */
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--track-allcaps);
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.t-body, p {
+  font-size: var(--text-base);
+  line-height: var(--lh-base);
+  font-weight: var(--weight-regular);
+  text-wrap: pretty;
+}
+
+.t-body-lg {
+  font-size: var(--text-md);
+  line-height: var(--lh-md);
+}
+
+.t-caption {
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+  color: var(--fg-muted);
+}
+
+.t-label {
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--weight-medium);
+}
+
+.t-code, code, kbd, samp {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  letter-spacing: var(--track-mono);
+  background: var(--code-bg);
+  color: var(--code-fg);
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+}
+
+pre {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+  background: var(--code-bg);
+  color: var(--code-fg);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+  overflow-x: auto;
+  border: 1px solid var(--border-subtle);
+}
+
+pre code {
+  background: transparent;
+  padding: 0;
+}
+
+/* Numeric — for tables of physical quantities (T, P, energy) */
+.t-numeric {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--track-mono);
+}
+
+/* Scientific — when displaying chemical formulas, units etc. */
+.t-formula {
+  font-family: var(--font-serif);
+  font-style: italic;
+}
+
+a {
+  color: var(--fg-link);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  text-decoration-thickness: 1px;
+}
+a:hover { color: var(--fg-link-hover); text-decoration-thickness: 2px; }
+
+hr { border: 0; border-top: 1px solid var(--divider); margin: var(--space-6) 0; }
+
+::selection { background: var(--primary-200); color: var(--primary-900); }

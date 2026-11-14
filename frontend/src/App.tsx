@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider, CssBaseline } from '@mui/material';
-import { RunBrowserFixed } from '@/components/browser/RunBrowserFixed';
+import { DatalakePage } from '@/pages/DatalakePage';
 import { VisualizationPage } from '@/pages/VisualizationPage';
 import { RunDetailPage } from '@/pages/RunDetailPage';
 import { ProjectsPage } from '@/pages/ProjectsPage';
@@ -32,11 +32,6 @@ const queryClient = new QueryClient({
 function AppContent() {
   const { mode } = useThemeContext();
   const theme = mode === 'light' ? lightTheme : darkTheme;
-  const handleRunSelect = (runId: number) => {
-    // Run selection is now handled by navigation to detail page
-    console.log('Selected run:', runId);
-  };
-
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider theme={theme}>
@@ -50,7 +45,7 @@ function AppContent() {
               <ProtectedRoute>
                 <AppLayout>
                   <Routes>
-                    <Route path="/" element={<RunBrowserFixed onRunSelect={handleRunSelect} />} />
+                    <Route path="/" element={<DatalakePage />} />
                     <Route path="/projects" element={<ProjectsPage />} />
                     <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
                     <Route path="/upload" element={<UploadPage />} />

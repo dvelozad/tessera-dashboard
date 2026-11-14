@@ -1,5 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import './styles/voxel-tokens.css'
 import './tessera-tokens.css'
 import App from './App'
 
