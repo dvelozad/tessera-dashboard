@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useThemeContext } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePalette } from '@/contexts/PaletteContext';
+import { useIsNarrow } from '@/hooks/useIsNarrow';
 import { initials } from '@/lib/design';
 
 const NAV = [
@@ -37,6 +38,7 @@ export const AppHeader: React.FC = () => {
   const { mode, toggleTheme } = useThemeContext();
   const { user, logout } = useAuth();
   const { choices, setPalette, setDarkPalette } = usePalette();
+  const narrow = useIsNarrow();
   const [menuOpen, setMenuOpen] = useState(false);
   const [hoveredNav, setHoveredNav] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -64,7 +66,7 @@ export const AppHeader: React.FC = () => {
         display: 'flex',
         alignItems: 'center',
         gap: 14,
-        padding: '0 24px',
+        padding: narrow ? '0 12px' : '0 24px',
         color: '#fff',
         position: 'relative',
         zIndex: 30,
@@ -78,7 +80,7 @@ export const AppHeader: React.FC = () => {
         <span style={{ fontSize: 20, fontWeight: 600, letterSpacing: '-0.02em' }}>Tessera</span>
       </div>
 
-      <nav style={{ display: 'flex', gap: 2, flex: 1, marginLeft: 8, height: 56 }}>
+      <nav style={{ display: narrow ? 'none' : 'flex', gap: 2, flex: 1, marginLeft: 8, height: 56 }}>
         {NAV.map((item) => {
           const active = isActive(item.path);
           return (
@@ -302,18 +304,20 @@ export const AppHeader: React.FC = () => {
         {initials(user?.full_name || user?.email)}
       </div>
 
-      <button
-        onClick={logout}
-        style={{
-          all: 'unset',
-          cursor: 'pointer',
-          fontSize: 12,
-          fontWeight: 600,
-          color: 'rgba(255,255,255,0.55)',
-        }}
-      >
-        Sign out
-      </button>
+      {!narrow && (
+        <button
+          onClick={logout}
+          style={{
+            all: 'unset',
+            cursor: 'pointer',
+            fontSize: 12,
+            fontWeight: 600,
+            color: 'rgba(255,255,255,0.55)',
+          }}
+        >
+          Sign out
+        </button>
+      )}
     </header>
   );
 };

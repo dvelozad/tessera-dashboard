@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useIsNarrow } from '@/hooks/useIsNarrow';
+import { MobileDatalake } from '@/pages/MobileDatalake';
 import apiClient from '@/services/api';
 import type { SimulationRun } from '@/types/visualization';
 import {
@@ -79,6 +81,7 @@ const FilterCheck: React.FC<CheckProps> = ({ checked, onClick, label, count, mon
 export const DatalakePage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const narrow = useIsNarrow();
   // Arriving from a project's "Show in datalake" pre-filters to that project.
   const [projectFilter, setProjectFilter] = useState<string | null>(null);
   useEffect(() => {
@@ -322,6 +325,10 @@ export const DatalakePage: React.FC = () => {
     background: active ? 'var(--primary-600)' : 'transparent',
     color: active ? '#fff' : 'var(--fg-muted)',
   });
+
+  if (narrow) {
+    return <MobileDatalake />;
+  }
 
   return (
     <main style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>

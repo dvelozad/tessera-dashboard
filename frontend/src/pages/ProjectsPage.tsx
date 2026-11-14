@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useIsNarrow } from '@/hooks/useIsNarrow';
 import apiClient from '@/services/api';
 import type { Project, ProjectLink, SimulationRun } from '@/types/visualization';
 import { EditProjectDialog } from '@/components/projects/EditProjectDialog';
@@ -85,6 +86,7 @@ export const ProjectsPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const narrow = useIsNarrow();
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<number | null>(null);
   const [tab, setTab] = useState<ProjectTab>('runs');
@@ -249,7 +251,7 @@ export const ProjectsPage: React.FC = () => {
         </button>
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '340px minmax(0,1fr)', gap: 16 }}>
+      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: narrow ? '1fr' : '340px minmax(0,1fr)', gap: 16 }}>
         {/* Project list */}
         <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg-surface)', border: '1px solid var(--border-default)', borderRadius: 4, boxShadow: 'var(--shadow-1)', overflow: 'hidden' }}>
           <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', height: 40, borderBottom: '1px solid var(--border-default)' }}>
