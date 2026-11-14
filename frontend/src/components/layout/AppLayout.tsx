@@ -1,6 +1,8 @@
 import React, { ReactNode, useEffect } from 'react';
 import { Box } from '@mui/material';
 import { AppHeader } from '@/components/shell/AppHeader';
+import { MobileNav } from '@/components/shell/MobileNav';
+import { useIsNarrow } from '@/hooks/useIsNarrow';
 import { useThemeContext } from '@/contexts/ThemeContext';
 
 interface AppLayoutProps {
@@ -11,6 +13,7 @@ const FOOTER_HEIGHT = 28;
 
 export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const { mode } = useThemeContext();
+  const narrow = useIsNarrow();
 
   // The Voxel tokens key off [data-theme] on <html>.
   useEffect(() => {
@@ -28,7 +31,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           display: 'flex',
           flexDirection: 'column',
           overflow: 'auto',
-          pb: `${FOOTER_HEIGHT}px`,
+          pb: narrow ? 0 : `${FOOTER_HEIGHT}px`,
           background: 'var(--bg-canvas)',
           color: 'var(--fg-default)',
           fontFamily: 'var(--font-sans)',
@@ -36,7 +39,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       >
         {children}
       </Box>
-      <Box
+      {!narrow && <Box
         component="footer"
         sx={{
           position: 'fixed',
@@ -70,7 +73,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           }}
         />
         <span style={{ color: 'var(--fg-default)', fontWeight: 600 }}>AREPAS</span>
-      </Box>
+      </Box>}
+
+      {narrow && <MobileNav />}
     </Box>
   );
 };
