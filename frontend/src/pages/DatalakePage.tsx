@@ -88,6 +88,7 @@ export const DatalakePage: React.FC = () => {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [hoverId, setHoverId] = useState<number | null>(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['runs', 'datalake'],
@@ -165,71 +166,79 @@ export const DatalakePage: React.FC = () => {
   const renderRow = (run: RunRow) => {
     const method = methodOf(run.simulation_method);
     const q = run.completeness_score ?? 0;
-    const color = METHOD_COLOR[method];
+    const methodColor = METHOD_COLOR[method];
+    // The design sets `ed = true`, so a hovered row inverts to the primary
+    // colour with white text in both themes. That inversion is the highlight.
+    const hovered = hoverId === run.id;
+    const muted = hovered ? 'rgba(255,255,255,0.8)' : 'var(--fg-muted)';
+    const link = hovered ? '#fff' : 'var(--fg-link)';
+    const line = hovered ? 'rgba(255,255,255,0.15)' : 'var(--border-subtle)';
+
     return (
       <div
         key={run.id}
         onClick={() => navigate(`/runs/${run.id}`)}
+        onMouseEnter={() => setHoverId(run.id)}
+        onMouseLeave={() => setHoverId(null)}
         style={{
           display: 'grid',
           gridTemplateColumns: COLS,
           alignItems: 'center',
           cursor: 'pointer',
           lineHeight: 1.3,
-          borderBottom: '1px solid var(--border-subtle)',
-          background: 'transparent',
-          transition: 'background 120ms',
+          borderBottom: `1px solid ${line}`,
+          background: hovered ? 'var(--primary-500)' : 'transparent',
+          color: hovered ? '#fff' : 'var(--fg-default)',
+          transition: 'background 120ms cubic-bezier(0.4,0,0.2,1)',
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
       >
         <div style={{ padding: `${rowPad} 16px`, minWidth: 0 }}>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: rowFont, fontWeight: 500, color: 'var(--fg-link)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: rowFont, fontWeight: 500, color: link, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {run.run_name}
           </div>
           {!compact && (
-            <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ fontSize: 11, color: muted, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {run.system?.composition || '—'}
             </div>
           )}
         </div>
         <div style={{ padding: '0 12px', minWidth: 0 }}>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--fg-link)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: link, textDecoration: 'underline', textDecorationColor: hovered ? 'rgba(255,255,255,0.5)' : 'var(--border-default)', textUnderlineOffset: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
             {run.project_name || '—'}
           </span>
         </div>
         <div style={{ padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 600, padding: '1px 5px', border: '1px solid var(--border-default)', borderRadius: 2, color: 'var(--fg-default)' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 600, padding: '1px 5px', border: `1px solid ${hovered ? 'rgba(255,255,255,0.6)' : 'var(--border-strong)'}`, borderRadius: 2, color: hovered ? '#fff' : 'var(--fg-default)' }}>
             {run.engine?.name || '—'}
           </span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--fg-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {run.engine?.version || ''}
           </span>
         </div>
         <div style={{ padding: '0 12px' }}>
-          <span style={{ display: 'inline-block', fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: `${color}18`, color, whiteSpace: 'nowrap' }}>
+          <span style={{ display: 'inline-block', fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: hovered ? '#fff' : methodColor, color: hovered ? 'var(--primary-700)' : '#fff', whiteSpace: 'nowrap' }}>
             {METHOD_LABEL[method]}
           </span>
         </div>
-        <div style={{ padding: '0 12px', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontVariantNumeric: 'tabular-nums' }}>
+        <div style={{ padding: '0 12px', fontSize: 13, color: hovered ? '#fff' : 'var(--fg-default)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontVariantNumeric: 'tabular-nums' }}>
           {fmtConditions(run.ensemble, run.temperature_target, run.pressure_target) || '—'}
         </div>
-        <div style={{ padding: '0 12px', fontFamily: 'var(--font-mono)', fontSize: 13, textAlign: 'right', whiteSpace: 'nowrap' }}>
+        <div style={{ padding: '0 12px', fontFamily: 'var(--font-mono)', fontSize: 13, color: hovered ? '#fff' : 'var(--fg-default)', textAlign: 'right', whiteSpace: 'nowrap' }}>
           {fmtLength(run.total_time)}
         </div>
-        <div style={{ padding: '0 12px', fontFamily: 'var(--font-mono)', fontSize: 13, textAlign: 'right' }}>
+        <div style={{ padding: '0 12px', fontFamily: 'var(--font-mono)', fontSize: 13, color: hovered ? '#fff' : 'var(--fg-default)', textAlign: 'right' }}>
           {fmtAtoms(run.system?.n_atoms)}
         </div>
         <div style={{ padding: '0 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ flex: 1, height: 2, background: 'var(--border-default)', borderRadius: 1, overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${q}%`, background: qualityColor(q) }} />
+          <div style={{ flex: 1, height: 2, background: hovered ? 'rgba(255,255,255,0.25)' : 'var(--border-default)', borderRadius: 1, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${q}%`, background: hovered ? '#fff' : qualityColor(q) }} />
           </div>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--fg-muted)', minWidth: 20, textAlign: 'right' }}>{q}</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: hovered ? '#fff' : 'var(--fg-muted)', minWidth: 20, textAlign: 'right' }}>{q}</span>
         </div>
-        <div style={{ padding: '0 12px', fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--fg-muted)', whiteSpace: 'nowrap' }}>
+        <div style={{ padding: '0 12px', fontFamily: 'var(--font-mono)', fontSize: 12, color: muted, whiteSpace: 'nowrap' }}>
           {fmtDate(run.created_at)}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--fg-muted)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: muted }}>
           <Chevron />
         </div>
       </div>

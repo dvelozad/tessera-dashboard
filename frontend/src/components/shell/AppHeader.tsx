@@ -38,6 +38,7 @@ export const AppHeader: React.FC = () => {
   const { user, logout } = useAuth();
   const { choices, setPalette, setDarkPalette } = usePalette();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [hoveredNav, setHoveredNav] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -84,6 +85,8 @@ export const AppHeader: React.FC = () => {
             <button
               key={item.path}
               onClick={() => navigate(item.path)}
+              onMouseEnter={() => setHoveredNav(item.path)}
+              onMouseLeave={() => setHoveredNav(null)}
               style={{
                 all: 'unset',
                 cursor: 'pointer',
@@ -92,11 +95,13 @@ export const AppHeader: React.FC = () => {
                 padding: '0 14px',
                 fontSize: 13,
                 fontWeight: active ? 600 : 500,
-                color: active ? '#fff' : 'rgba(255,255,255,0.62)',
+                color: active || hoveredNav === item.path ? '#fff' : 'rgba(255,255,255,0.62)',
                 borderBottom: `2px solid ${active ? 'var(--primary-500)' : 'transparent'}`,
+                background: hoveredNav === item.path ? 'rgba(255,255,255,0.04)' : 'transparent',
                 boxSizing: 'border-box',
                 height: 56,
                 whiteSpace: 'nowrap',
+                transition: 'background 120ms, color 120ms',
               }}
             >
               {item.label}

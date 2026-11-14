@@ -11,6 +11,7 @@ import {
   fmtConditions,
   fmtDate,
   fmtLength,
+  METHOD_COLOR,
   initials,
   methodOf,
   qualityColor,
@@ -47,6 +48,7 @@ export const ProjectsPage: React.FC = () => {
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [busy, setBusy] = useState(false);
+  const [hoverId, setHoverId] = useState<number | null>(null);
 
   const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: () => apiClient.listProjects() });
   const runsQuery = useQuery({ queryKey: ['runs', 'projects'], queryFn: () => apiClient.listRuns({ limit: 1000 }) });
@@ -161,37 +163,46 @@ export const ProjectsPage: React.FC = () => {
                     setSelected(project.id);
                     setTab('runs');
                   }}
+                  onMouseEnter={() => setHoverId(project.id)}
+                  onMouseLeave={() => setHoverId(null)}
                   style={{
                     padding: '10px 16px 10px 13px',
-                    borderBottom: '1px solid var(--border-subtle)',
+                    borderBottom: `1px solid ${hoverId === project.id ? 'rgba(255,255,255,0.15)' : 'var(--border-subtle)'}`,
                     borderLeft: `3px solid ${isActive ? 'var(--primary-500)' : 'transparent'}`,
-                    background: isActive ? 'var(--bg-selected)' : 'transparent',
+                    background:
+                      hoverId === project.id
+                        ? 'var(--primary-500)'
+                        : isActive
+                          ? 'var(--bg-selected)'
+                          : 'transparent',
+                    color: hoverId === project.id ? '#fff' : 'var(--fg-default)',
                     cursor: 'pointer',
                     lineHeight: 1.3,
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 5,
+                    transition: 'background 120ms cubic-bezier(0.4,0,0.2,1)',
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 500, color: isActive ? 'var(--fg-link-hover)' : 'var(--fg-link)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <span style={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 500, color: hoverId === project.id ? '#fff' : isActive ? 'var(--fg-link-hover)' : 'var(--fg-link)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {project.name}
                     </span>
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>{project.run_count ?? projectRuns.length}</span>
                   </div>
                   {project.description && (
-                    <div style={{ fontSize: 12, color: 'var(--fg-muted)', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                    <div style={{ fontSize: 12, color: hoverId === project.id ? 'rgba(255,255,255,0.8)' : 'var(--fg-muted)', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                       {project.description}
                     </div>
                   )}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ width: 18, height: 18, borderRadius: '50%', background: 'var(--primary-100)', color: 'var(--primary-700)', fontFamily: 'var(--font-mono)', fontSize: 9, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ width: 18, height: 18, borderRadius: '50%', background: hoverId === project.id ? 'rgba(255,255,255,0.9)' : 'var(--primary-100)', color: hoverId === project.id ? 'var(--primary-700)' : 'var(--primary-700)', fontFamily: 'var(--font-mono)', fontSize: 9, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       {initials(project.pi_name || 'Tessera')}
                     </span>
                     <span style={{ fontSize: 12, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
                       {project.pi_name || '—'}
                     </span>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--fg-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: hoverId === project.id ? 'rgba(255,255,255,0.8)' : 'var(--fg-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
                       {engines}
                     </span>
                     <span
@@ -203,8 +214,8 @@ export const ProjectsPage: React.FC = () => {
                         fontWeight: 500,
                         padding: '1px 6px',
                         borderRadius: 999,
-                        background: project.is_public ? 'var(--accent-300)' : 'var(--ink-100)',
-                        color: project.is_public ? 'var(--accent-700)' : 'var(--ink-600)',
+                        background: hoverId === project.id ? '#fff' : project.is_public ? 'var(--accent-300)' : 'var(--ink-100)',
+                        color: hoverId === project.id ? 'var(--primary-700)' : project.is_public ? 'var(--accent-700)' : 'var(--ink-600)',
                       }}
                     >
                       {project.is_public ? 'Public' : 'Private'}
@@ -336,38 +347,54 @@ export const ProjectsPage: React.FC = () => {
                     {activeRuns.map((run) => {
                       const method = methodOf(run.simulation_method);
                       const quality = run.completeness_score ?? 0;
+                      const hovered = hoverId === run.id;
+                      const muted = hovered ? 'rgba(255,255,255,0.8)' : 'var(--fg-muted)';
                       return (
                         <div
                           key={run.id}
                           onClick={() => navigate(`/runs/${run.id}`)}
-                          style={{ display: 'grid', gridTemplateColumns: COLS, alignItems: 'center', cursor: 'pointer', borderBottom: '1px solid var(--border-subtle)', lineHeight: 1.3 }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                          onMouseEnter={() => setHoverId(run.id)}
+                          onMouseLeave={() => setHoverId(null)}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: COLS,
+                            alignItems: 'center',
+                            cursor: 'pointer',
+                            borderBottom: `1px solid ${hovered ? 'rgba(255,255,255,0.15)' : 'var(--border-subtle)'}`,
+                            background: hovered ? 'var(--primary-500)' : 'transparent',
+                            color: hovered ? '#fff' : 'var(--fg-default)',
+                            lineHeight: 1.3,
+                            transition: 'background 120ms cubic-bezier(0.4,0,0.2,1)',
+                          }}
                         >
                           <div style={{ padding: '9px 16px', minWidth: 0 }}>
-                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 500, color: 'var(--fg-link)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 500, color: hovered ? '#fff' : 'var(--fg-link)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                               {run.run_name}
                             </div>
-                            <div style={{ fontSize: 11, color: 'var(--fg-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            <div style={{ fontSize: 11, color: muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                               {run.system?.composition}
                             </div>
                           </div>
                           <div style={{ padding: '0 12px' }}>
-                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 600, padding: '1px 5px', border: '1px solid var(--border-default)', borderRadius: 2 }}>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 600, padding: '1px 5px', border: `1px solid ${hovered ? 'rgba(255,255,255,0.6)' : 'var(--border-strong)'}`, borderRadius: 2, color: hovered ? '#fff' : 'var(--fg-default)' }}>
                               {run.engine?.name}
                             </span>
                           </div>
-                          <div style={{ padding: '0 12px', fontSize: 11, fontWeight: 600 }}>{METHOD_LABEL[method]}</div>
+                          <div style={{ padding: '0 12px' }}>
+                            <span style={{ display: 'inline-block', fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: hovered ? '#fff' : METHOD_COLOR[method], color: hovered ? 'var(--primary-700)' : '#fff', whiteSpace: 'nowrap' }}>
+                              {METHOD_LABEL[method]}
+                            </span>
+                          </div>
                           <div style={{ padding: '0 12px', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {fmtConditions(run.ensemble, run.temperature_target, run.pressure_target) || '—'}
                           </div>
                           <div style={{ padding: '0 12px', fontFamily: 'var(--font-mono)', fontSize: 12, textAlign: 'right' }}>{fmtLength(run.total_time)}</div>
                           <div style={{ padding: '0 12px', fontFamily: 'var(--font-mono)', fontSize: 12, textAlign: 'right' }}>{fmtAtoms(run.system?.n_atoms)}</div>
                           <div style={{ padding: '0 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <div style={{ flex: 1, height: 2, background: 'var(--border-default)', borderRadius: 1, overflow: 'hidden' }}>
-                              <div style={{ height: '100%', width: `${quality}%`, background: qualityColor(quality) }} />
+                            <div style={{ flex: 1, height: 2, background: hovered ? 'rgba(255,255,255,0.25)' : 'var(--border-default)', borderRadius: 1, overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: `${quality}%`, background: hovered ? '#fff' : qualityColor(quality) }} />
                             </div>
-                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--fg-muted)' }}>{quality}</span>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: hovered ? '#fff' : 'var(--fg-muted)' }}>{quality}</span>
                           </div>
                         </div>
                       );
