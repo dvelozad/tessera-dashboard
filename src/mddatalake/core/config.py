@@ -66,6 +66,10 @@ class Settings(BaseSettings):
     api_port: int = 8000
     api_workers: int = 4
 
+    # Optional: serve the built SPA from the API itself (one process, one port).
+    # Point this at frontend/dist. Empty disables it.
+    frontend_dir: str = ""
+
     # Logging
     log_level: str = "INFO"
     log_format: Literal["json", "text"] = "text"
@@ -80,7 +84,10 @@ class Settings(BaseSettings):
     preview_cache_root: str = "/tmp/mdrepo/preview_cache"
     preview_frame_count: int = 1  # Extract first N frames
     preview_format: Literal["pdb", "dcd"] = "pdb"
-    preview_max_file_size_mb: int = 1000  # Skip if trajectory > 1000 MB
+    preview_max_file_size_mb: int = 1000  # Above this, read only the head
+    # Bytes read from the head of an oversized trajectory for its preview.
+    # 0 disables head-based previews (large trajectories are then skipped).
+    preview_head_bytes: int = 256 * 1024 * 1024
     preview_async_extraction: bool = True  # True = async, False = inline
 
     # Upload Validation Configuration

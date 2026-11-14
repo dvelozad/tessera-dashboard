@@ -2,9 +2,14 @@
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
+from mddatalake.core.config import settings
 
 from mddatalake.api.routes import artifacts, completeness, health, plots, projects, runs, upload, visualization
 from mddatalake.api.routes import auth
@@ -66,3 +71,31 @@ app.include_router(completeness.router, prefix="/api/v1", tags=["Data Quality"],
 app.include_router(upload.router, prefix="/api/v1", tags=["Upload"], dependencies=_auth)
 app.include_router(plots.router, prefix="/api/v1", tags=["Plots"], dependencies=_auth)
 app.include_router(projects.router, prefix="/api/v1", tags=["Projects"], dependencies=_auth)
+
+
+# ---------------------------------------------------------------------------
+# Optional: serve the built frontend from the same process.
+#
+# Set FRONTEND_DIR to a `dist/` directory and the API also serves the SPA, so a
+# deployment is one process on one port with no separate web server. Registered
+# last, so API routes and /docs always win.
+# ---------------------------------------------------------------------------
+_frontend_dir = Path(settings.frontend_dir) if settings.frontend_dir else None
+
+if _frontend_dir and (_frontend_dir / "index.html").is_file():
+    assets_dir = _frontend_dir / "assets"
+    if assets_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str):
+        """Serve a static file when it exists, otherwise the SPA entry point."""
+        if full_path:
+            candidate = (_frontend_dir / full_path).resolve()
+            try:
+                candidate.relative_to(_frontend_dir.resolve())
+            except ValueError:
+                return FileResponse(_frontend_dir / "index.html")
+            if candidate.is_file():
+                return FileResponse(candidate)
+        return FileResponse(_frontend_dir / "index.html")

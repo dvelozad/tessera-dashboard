@@ -63,6 +63,7 @@ class IngestionService:
         user_artifact_types: dict[str, str] | None = None,  # User-provided artifact type overrides
         slurm_job_id: str | None = None,
         compute_node: str | None = None,
+        source: str | None = None,  # Where the directory really came from
     ) -> int:
         """
         Ingest a simulation directory (5-stage pipeline).
@@ -158,7 +159,12 @@ class IngestionService:
             run_name = directory.name
 
         # Stage 3: Artifact Processing
-        artifacts_data = await self._process_artifacts(directory, metadata.get("artifacts", []))
+        # `source` records where the directory really came from (a cluster host,
+        # a mounted path). A staged copy is deleted after ingestion, so the
+        # staging path would be a useless provenance record.
+        artifacts_data = await self._process_artifacts(
+            directory, metadata.get("artifacts", []), source=source
+        )
 
         # Stage 4: Database Transaction
         try:
@@ -166,7 +172,7 @@ class IngestionService:
                 project_name=project_name,
                 run_name=run_name,
                 description=description,
-                working_directory=str(directory),
+                working_directory=source or str(directory),
                 metadata=metadata,
                 artifacts_data=artifacts_data,
                 slurm_job_id=slurm_job_id,
@@ -190,6 +196,7 @@ class IngestionService:
                         engine=metadata.get("engine"),
                         description=description,
                         artifacts=artifacts_data,
+                        extra={"source": source} if source else None,
                     )
                     logger.info(f"Wrote manifest {key} for run {run_id}")
                 except Exception as e:
@@ -222,7 +229,7 @@ class IngestionService:
             raise IngestionError(f"Failed to extract metadata: {e}")
 
     async def _process_artifacts(
-        self, directory: Path, artifacts_info: list[dict[str, Any]]
+        self, directory: Path, artifacts_info: list[dict[str, Any]], source: str | None = None
     ) -> list[dict[str, Any]]:
         """Stage 3: Process artifacts (checksum, compress, upload)."""
         processed_artifacts = []
@@ -244,10 +251,19 @@ class IngestionService:
                 file_path, cas_key(checksum, file_path.name), checksum
             )
 
+            # Prefer the real origin (host:/path) over the staging path.
+            original_path = str(file_path)
+            if source:
+                try:
+                    relative = file_path.relative_to(directory)
+                    original_path = f"{source.rstrip('/')}/{relative}"
+                except ValueError:
+                    original_path = str(file_path)
+
             processed_artifacts.append(
                 {
                     "file_name": artifact_info["file_name"],
-                    "file_path": str(file_path),
+                    "file_path": original_path,
                     "artifact_type": artifact_info["artifact_type"],
                     "storage_key": storage_key,
                     "checksum_sha256": checksum,

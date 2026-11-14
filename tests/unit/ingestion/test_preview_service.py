@@ -139,6 +139,8 @@ async def test_extract_preview_large_file(
     from mddatalake.core.config import settings
 
     monkeypatch.setattr(settings, "preview_max_file_size_mb", 500)
+    # Head-based previews disabled: an oversized file is skipped outright.
+    monkeypatch.setattr(settings, "preview_head_bytes", 0)
     # Setup - file larger than 500 MB
     mock_trajectory_artifact.file_size_bytes = 600 * 1024 * 1024
     service = PreviewExtractionService(mock_db, mock_storage)

@@ -125,6 +125,18 @@ survivable: ingestion never waits on it.
 * Downloads stream in 8 MiB chunks and never load a whole artifact into memory.
   A 23 GB `.lammpstrj` is just a slower response, not an OOM kill.
 
+### Previews of enormous trajectories
+
+A 3D preview needs the opening frames, not the file. Above
+`PREVIEW_MAX_FILE_SIZE_MB` the preview service calls
+`download_head(key, PREVIEW_HEAD_BYTES)` (256 MB by default), which is
+`rclone cat --head` on the cold tier: only those bytes cross the network.
+
+A head almost never ends on a frame boundary, and a reader that hits a
+half-written LAMMPS frame raises instead of returning the frames it did read, so
+the truncated tail is cut back to the last `ITEM: TIMESTEP` marker before
+parsing. Set `PREVIEW_HEAD_BYTES=0` to skip oversized trajectories instead.
+
 ## 6. Failure modes
 
 | Failure | Effect | Recovery |
@@ -139,7 +151,16 @@ survivable: ingestion never waits on it.
 
 ## 7. Portability
 
-Nothing host-specific is compiled in. To move the deployment:
+Nothing host-specific is compiled in. The API can serve the built SPA itself
+(`FRONTEND_DIR`), so a deployment is one process and one port; TLS is added in
+front by whatever the host already runs (Tailscale Serve on bigmsi).
+
+Each artifact records where it actually came from: `tessera pull` writes
+`host:/original/path` into the artifact's `file_path` and the manifest's
+`source`, not the staging directory it deleted afterwards, so provenance
+survives the copy.
+
+To move the deployment:
 
 1. Copy `.env` to the new host (or re-create it from `.env.example`).
 2. Put the same `rclone.conf` (or a token with access to the same Drive) in

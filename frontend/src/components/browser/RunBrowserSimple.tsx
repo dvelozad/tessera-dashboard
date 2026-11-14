@@ -21,7 +21,7 @@ interface RunBrowserSimpleProps {
   onRunSelect: (runId: number) => void;
 }
 
-export const RunBrowserSimple: React.FC<RunBrowserSimpleProps> = ({ onRunSelect }) => {
+export const RunBrowserSimple: React.FC<RunBrowserSimpleProps> = ({ onRunSelect: _onRunSelect }) => {
   const navigate = useNavigate();
   const { mode, toggleTheme } = useThemeContext();
   const [filters] = useState<RunFilters>({

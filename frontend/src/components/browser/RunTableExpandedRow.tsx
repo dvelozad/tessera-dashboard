@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Grid, Typography, Chip, LinearProgress, Link } from '@mui/material';
-import { CheckCircle, Warning, OpenInNew } from '@mui/icons-material';
+import { CheckCircle, OpenInNew } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import type { SimulationRun } from '@/types/visualization';
 

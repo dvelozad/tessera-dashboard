@@ -50,17 +50,24 @@ cd frontend && npm install && npm run dev
 
 ## Running on bigmsi (current deployment)
 
-Three systemd **user** units are installed and enabled, and lingering is on, so
+Two systemd **user** units are installed and enabled, and lingering is on, so
 they start at boot and survive logout:
 
 | Unit | What it does |
 |---|---|
-| `tessera-api.service` | FastAPI on :8000 |
+| `tessera-api.service` | FastAPI on :8000, serving both the API and the built SPA |
 | `tessera-worker.service` | drains the hot cache into Google Drive |
-| `tessera-web.service` | Vite dev server on :8420 (dashboard) |
+
+The API serves `frontend/dist` itself (`FRONTEND_DIR`), so the deployment is a
+single process on a single port — no nginx, no Node server, nothing to keep in
+sync. Tailscale terminates TLS in front of it:
 
 ```bash
-systemctl --user status tessera-api tessera-worker tessera-web
+tailscale serve --bg --https=8420 http://127.0.0.1:8000
+```
+
+```bash
+systemctl --user status tessera-api tessera-worker
 tail -f ~/.local/share/tessera/logs/worker.log   # user journald is inactive here
 ```
 
@@ -75,7 +82,13 @@ The first account is created with:
 ```
 
 Ingestion writes to the hot cache and is pushed to Drive by the worker, so
-`journalctl --user -u tessera-worker` is where upload progress appears.
+`~/.local/share/tessera/logs/worker.log` is where upload progress appears.
+
+After pulling the frontend sources, rebuild what the API serves:
+
+```bash
+cd frontend && npm ci && npm run build     # writes frontend/dist
+```
 
 ## Ingesting data
 

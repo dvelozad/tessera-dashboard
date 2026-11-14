@@ -129,3 +129,20 @@ def test_remote_path_with_named_remote():
     assert backend.remote_path("cas/sha256/ab/cd/x.dump") == (
         "gdrive:tessera/cas/sha256/ab/cd/x.dump"
     )
+
+
+@pytest.mark.asyncio
+async def test_download_head_reads_only_the_prefix(backend: RcloneBackend, tmp_path: Path):
+    source = tmp_path / "big.lammpstrj"
+    source.write_bytes(b"A" * 1000 + b"B" * 9000)
+    key = "cas/sha256/ab/cd/big.lammpstrj"
+    await backend.upload(source, key)
+
+    head_path = await backend.download_head(key, 1500)
+    try:
+        data = head_path.read_bytes()
+    finally:
+        head_path.unlink(missing_ok=True)
+
+    assert len(data) == 1500
+    assert data == b"A" * 1000 + b"B" * 500

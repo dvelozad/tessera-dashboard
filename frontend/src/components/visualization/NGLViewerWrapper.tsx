@@ -14,7 +14,6 @@ interface NGLViewerWrapperProps {
 
 export const NGLViewerWrapper: React.FC<NGLViewerWrapperProps> = ({
   mdservClient,
-  trajectoryUrl,
   topologyUrl,
   currentFrame = 0,
   representationType = 'ball+stick',
@@ -76,7 +75,8 @@ export const NGLViewerWrapper: React.FC<NGLViewerWrapperProps> = ({
       if (structureComponent) {
         // Update coordinates from MDsrv
         const structure = structureComponent.structure;
-        const coords = structure.getCoords();
+        // NGL's typings omit getCoords although it exists at runtime.
+        const coords = (structure as any).getCoords();
 
         // Copy new coordinates
         coords.set(frameData.coordinates);

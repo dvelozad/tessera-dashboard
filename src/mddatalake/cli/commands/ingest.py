@@ -34,6 +34,7 @@ async def ingest_command(
                 project_name=project_name,
                 run_name=run_name,
                 description=description,
+                source=str(directory.resolve()),
             )
 
             console.print(f"[green]✓ Successfully ingested run {run_id}[/green]")

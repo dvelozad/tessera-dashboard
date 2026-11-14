@@ -159,3 +159,35 @@ async def test_list_files_excludes_queue(tiered: TieredBackend, tmp_path: Path):
     keys = {e["storage_key"] for e in entries}
     assert "cas/sha256/ab/cd/f.bin" in keys
     assert not any(k.startswith(".queue") for k in keys)
+
+
+@pytest.mark.asyncio
+async def test_download_head_from_hot_copy(tiered: TieredBackend, tmp_path: Path):
+    source = tmp_path / "traj.dump"
+    source.write_bytes(b"x" * 4096)
+    key = "cas/sha256/ab/cd/traj.dump"
+    await tiered.upload(source, key, compute_checksum(source))
+
+    head = await tiered.download_head(key, 100)
+    try:
+        assert len(head.read_bytes()) == 100
+    finally:
+        head.unlink(missing_ok=True)
+
+
+@pytest.mark.asyncio
+async def test_download_head_falls_back_to_cold(tmp_path: Path, cold: FilesystemBackend):
+    tiered = TieredBackend(
+        hot_root=tmp_path / "hot2", cold=cold, max_bytes=10**6, defer_upload=True
+    )
+    source = tmp_path / "traj2.dump"
+    source.write_bytes(b"y" * 2048)
+    key = "cas/sha256/ee/ff/traj2.dump"
+    await cold.upload(source, key, compute_checksum(source))
+
+    # FilesystemBackend has no head reader, so the file is hydrated first.
+    head = await tiered.download_head(key, 64)
+    try:
+        assert len(head.read_bytes()) == 64
+    finally:
+        head.unlink(missing_ok=True)

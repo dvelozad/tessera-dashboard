@@ -76,6 +76,10 @@ async def pull_command(
     # Short-lived process: previews must finish before it exits.
     settings.preview_async_extraction = False
 
+    # Provenance: the origin the data came from, not the staging copy that is
+    # about to be deleted.
+    origin = f"{host}:{remote_path}" if host else str(Path(remote_path).resolve())
+
     async with AsyncSessionLocal() as session:
         service = IngestionService(session)
         run_id = await service.ingest(
@@ -83,6 +87,7 @@ async def pull_command(
             project_name=project_name,
             run_name=run_name,
             description=description,
+            source=origin,
         )
 
     console.print(f"[green]Ingested run {run_id} from {directory}[/green]")

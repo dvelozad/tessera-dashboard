@@ -189,6 +189,57 @@ class RcloneBackend(StorageBackend):
             raise
         return open(handle.name, "rb")
 
+    async def download_head(self, storage_key: str, nbytes: int) -> Path:
+        """Fetch only the first ``nbytes`` of an object.
+
+        This is what makes previews of a 20 GB trajectory tractable: the
+        viewer only needs the opening frames, and `rclone cat --head` reads
+        just that many bytes instead of the whole file.
+        """
+        handle = tempfile.NamedTemporaryFile(
+            prefix="tessera-head-", suffix=Path(storage_key).suffix, delete=False
+        )
+        handle.close()
+        target = Path(handle.name)
+
+        args = [
+            "cat",
+            self.remote_path(storage_key),
+            "--head",
+            str(int(nbytes)),
+            *self._base_flags(),
+        ]
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "rclone",
+                *args,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=self._env(),
+            )
+        except FileNotFoundError as e:
+            raise StorageError("rclone is not installed or not on PATH") from e
+
+        try:
+            with open(target, "wb") as out:
+                assert process.stdout is not None
+                while chunk := await process.stdout.read(8 * 1024 * 1024):
+                    out.write(chunk)
+            await asyncio.wait_for(process.wait(), timeout=self.timeout)
+            stderr = await process.stderr.read()  # type: ignore[union-attr]
+        except asyncio.TimeoutError as e:
+            process.kill()
+            target.unlink(missing_ok=True)
+            raise StorageError(f"rclone cat timeout for {storage_key}") from e
+
+        if (process.returncode or 0) != 0:
+            target.unlink(missing_ok=True)
+            raise StorageError(
+                f"rclone head read failed for {storage_key}: "
+                f"{self._tail(stderr.decode(errors='replace'))}"
+            )
+        return target
+
     async def exists(self, storage_key: str) -> bool:
         """Return True when the object exists on the remote."""
         code, out, err = await self._run(

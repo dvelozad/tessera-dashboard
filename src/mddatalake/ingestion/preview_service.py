@@ -67,16 +67,28 @@ class PreviewExtractionService:
                 await self.db.commit()
                 return False
 
-            # Check file size
+            # Check file size. Above the threshold we do not give up: a preview
+            # only needs the opening frames, so fetch the head of the file
+            # instead of downloading tens of gigabytes.
             max_size_bytes = self.config.preview_max_file_size_mb * 1024 * 1024
-            if artifact.file_size_bytes > max_size_bytes:
+            use_head = artifact.file_size_bytes > max_size_bytes
+            head_bytes = getattr(self.config, "preview_head_bytes", 0)
+
+            if use_head:
+                download_head = getattr(self.storage, "download_head", None)
+                if not head_bytes or not callable(download_head):
+                    logger.info(
+                        f"Artifact {artifact.id} too large for preview "
+                        f"({artifact.file_size_bytes} bytes > {max_size_bytes} bytes) "
+                        "and the backend cannot read a partial file"
+                    )
+                    artifact.preview_status = "n/a"
+                    await self.db.commit()
+                    return False
                 logger.info(
-                    f"Artifact {artifact.id} too large for preview "
-                    f"({artifact.file_size_bytes} bytes > {max_size_bytes} bytes)"
+                    f"Artifact {artifact.id} is {artifact.file_size_bytes} bytes; "
+                    f"reading the first {head_bytes} bytes for its preview"
                 )
-                artifact.preview_status = "n/a"
-                await self.db.commit()
-                return False
 
             # Update status to processing
             artifact.preview_status = "processing"
@@ -86,7 +98,14 @@ class PreviewExtractionService:
             temp_dir = Path(tempfile.mkdtemp(prefix="preview_"))
             try:
                 trajectory_path = temp_dir / artifact.file_name
-                await self.storage.download(artifact.storage_key, trajectory_path)
+                if use_head:
+                    head_path = await self.storage.download_head(  # type: ignore[attr-defined]
+                        artifact.storage_key, head_bytes
+                    )
+                    shutil.move(str(head_path), trajectory_path)
+                    self._trim_partial_frame(trajectory_path)
+                else:
+                    await self.storage.download(artifact.storage_key, trajectory_path)
 
                 # Get topology artifact
                 if not topology_artifact:
@@ -310,6 +329,37 @@ class PreviewExtractionService:
                 writer.write(universe.atoms)
 
         logger.info(f"Extracted {actual_frames} frames to {output_path}")
+
+    @staticmethod
+    def _trim_partial_frame(path: Path, marker: bytes = b"ITEM: TIMESTEP") -> None:
+        """Drop a trailing partial frame from a truncated text trajectory.
+
+        A head of a LAMMPS dump almost never ends on a frame boundary, and a
+        reader that hits a half-written frame raises instead of returning the
+        frames it did read.
+        """
+        try:
+            size = path.stat().st_size
+            if size == 0:
+                return
+            # Frames are far smaller than this window, so the last marker is
+            # inside it unless the head is a single enormous frame.
+            window = min(size, 32 * 1024 * 1024)
+            with open(path, "rb") as f:
+                f.seek(size - window)
+                tail = f.read(window)
+
+            index = tail.rfind(marker)
+            if index <= 0:
+                return
+
+            cut = size - window + index
+            if cut < size:
+                with open(path, "r+b") as f:
+                    f.truncate(cut)
+                logger.info(f"Trimmed {size - cut} trailing bytes from {path.name}")
+        except OSError as e:
+            logger.warning(f"Could not trim partial frame from {path}: {e}")
 
     async def _find_topology_artifact(self, run_id: int) -> Artifact | None:
         """

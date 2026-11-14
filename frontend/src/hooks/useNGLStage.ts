@@ -56,10 +56,12 @@ export function useNGLStage(
         setError(null);
 
         const structure = await stage.loadFile(url, { ext: format });
-        setStructureComponent(structure);
+        // loadFile is typed as void | Component; it always resolves to a component.
+        if (!structure) return;
+        setStructureComponent(structure as any);
 
         // Auto-center and zoom
-        structure.autoView();
+        (structure as any).autoView();
 
         return structure;
       } catch (err) {
@@ -77,7 +79,7 @@ export function useNGLStage(
       if (!structureComponent) return;
 
       try {
-        const representation = structureComponent.addRepresentation(type, params);
+        const representation = structureComponent.addRepresentation(type as any, params);
         return representation;
       } catch (err) {
         setError(err as Error);
@@ -113,7 +115,7 @@ export function useNGLStage(
 
       const trajectory = structureComponent.structure.trajectory;
       if (trajectory) {
-        trajectory.setFrame(frameIndex);
+        (trajectory as any).setFrame(frameIndex);
         stage?.viewer.requestRender();
       }
     },
@@ -124,7 +126,7 @@ export function useNGLStage(
     if (!structureComponent) return 0;
 
     const trajectory = structureComponent.structure.trajectory;
-    return trajectory ? trajectory.numframes : 1;
+    return trajectory ? (trajectory as any).numframes : 1;
   }, [structureComponent]);
 
   const getCurrentFrame = useCallback(() => {

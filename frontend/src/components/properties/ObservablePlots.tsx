@@ -188,7 +188,9 @@ export const ObservablePlots: React.FC<ObservablePlotsProps> = ({ runId }) => {
             const yData = plotData.data[column];
 
             // Calculate average
-            const average = yData.reduce((sum, val) => sum + val, 0) / yData.length;
+            const average =
+              (yData as number[]).reduce((sum: number, val: number) => sum + val, 0) /
+              yData.length;
 
             return (
               <Paper key={column} sx={{ p: 2 }}>

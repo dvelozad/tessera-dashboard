@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Paper, Typography } from '@mui/material';
+import { Paper, Typography } from '@mui/material';
 import { MaterialReactTable, type MRT_ColumnDef } from 'material-react-table';
 import type { SimulationRun } from '@/types/visualization';
 

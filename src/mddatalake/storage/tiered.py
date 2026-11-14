@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -251,6 +252,31 @@ class TieredBackend(StorageBackend):
         if source is None:
             source = await self._hydrate(storage_key)
         return open(source, "rb")
+
+    async def download_head(self, storage_key: str, nbytes: int) -> Path:
+        """Return a local file holding the first ``nbytes`` of an artifact."""
+        source = self.local_path(storage_key)
+        if source is None:
+            head = getattr(self.cold, "download_head", None)
+            if callable(head):
+                # Let the cold tier read just the head; do not pull gigabytes
+                # into the hot cache to look at the first frames.
+                return await head(storage_key, nbytes)
+            source = await self._hydrate(storage_key)
+
+        handle = tempfile.NamedTemporaryFile(
+            prefix="tessera-head-", suffix=Path(storage_key).suffix, delete=False
+        )
+        remaining = nbytes
+        with open(source, "rb") as src, open(handle.name, "wb") as out:
+            while remaining > 0:
+                chunk = src.read(min(CHUNK_SIZE, remaining))
+                if not chunk:
+                    break
+                out.write(chunk)
+                remaining -= len(chunk)
+        handle.close()
+        return Path(handle.name)
 
     async def exists(self, storage_key: str) -> bool:
         if self.local_path(storage_key) is not None:
