@@ -1,0 +1,14 @@
+[Unit]
+Description=Tessera dashboard (Vite dev server on 8420)
+After=network-online.target tessera-api.service
+Wants=tessera-api.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/deo/Documents/tessera-dashboard/frontend
+ExecStart=/home/deo/.nvm/versions/node/v22.23.3/bin/npm run dev -- --port 8420 --host 0.0.0.0
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -48,6 +48,35 @@ Frontend:
 cd frontend && npm install && npm run dev
 ```
 
+## Running on bigmsi (current deployment)
+
+Three systemd **user** units are installed and enabled, and lingering is on, so
+they start at boot and survive logout:
+
+| Unit | What it does |
+|---|---|
+| `tessera-api.service` | FastAPI on :8000 |
+| `tessera-worker.service` | drains the hot cache into Google Drive |
+| `tessera-web.service` | Vite dev server on :8420 (dashboard) |
+
+```bash
+systemctl --user status tessera-api tessera-worker tessera-web
+journalctl --user -u tessera-worker -f
+```
+
+Copies live in `deploy/systemd/user/`. The Python environment is
+`/home/deo/.venvs/tessera-py312`; `make venv` recreates it.
+
+The first account is created with:
+
+```bash
+.venv/bin/python -m mddatalake.cli.main users create-admin \
+  --email you@example.org --password '...' --name "Your Name"
+```
+
+Ingestion writes to the hot cache and is pushed to Drive by the worker, so
+`journalctl --user -u tessera-worker` is where upload progress appears.
+
 ## Ingesting data
 
 ```bash
