@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Stage } from 'ngl';
+import { Stage, autoLoad } from 'ngl';
 import { Box, CircularProgress, Typography, Alert, Button, Chip } from '@mui/material';
 import {
     CenterFocusStrong as CenterIcon,
@@ -160,29 +160,24 @@ export const SimulationPreview: React.FC<SimulationPreviewProps> = ({
                     );
                     if (response.ok) {
                         const trajectoryBlob = await response.blob();
-                        // NGL's addTrajectory takes a *string* path and calls
-                        // name.replace(...) on it, so a File or Blob throws
-                        // "e.replace is not a function". A blob: URL is a
-                        // same-origin string it can fetch itself.
-                        const trajectoryUrl = URL.createObjectURL(trajectoryBlob);
-                        const trajectory = await (component as any).addTrajectory?.(
-                            trajectoryUrl,
-                            { ext: 'dcd', binary: true }
-                        );
-                        console.log('preview: trajectory frames', trajectory?.numframes);
-                        const frames =
-                            trajectory?.numframes ??
-                            trajectory?.frameCount ??
-                            (component as any)?.structure?.trajectory?.numframes ??
+                        const frames = await (autoLoad as any)(trajectoryBlob, { ext: 'dcd' });
+                        const trajectory = (component as any).addTrajectory?.(frames);
+                        const count =
+                            frames?.coordinates?.length ??
+                            trajectory?.trajectory?.frameCount ??
                             1;
-                        setFrameCount(Math.max(1, Number(frames) || 1));
+                        console.log('preview: trajectory attached with frames:', count);
+                        setFrameCount(Math.max(1, Number(count) || 1));
+
+                        // Attach frame controller so playback timer and slider advance frames
+                        (component as any).setFrame = (frameIndex: number) => {
+                            trajectory?.setFrame?.(frameIndex);
+                            stageRef.current?.viewer?.requestRender();
+                        };
                     } else {
                         setFrameCount(1);
                     }
                 } catch (trajectoryError) {
-                    // NGL's addTrajectory expects its remote-trajectory
-                    // protocol (metadata + countUrl), not a bare DCD, so the
-                    // animation cannot attach yet. The still is unaffected.
                     console.debug('preview: no trajectory attached', trajectoryError);
                     setFrameCount(1);
                 }

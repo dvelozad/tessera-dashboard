@@ -125,6 +125,19 @@ survivable: ingestion never waits on it.
 * Downloads stream in 8 MiB chunks and never load a whole artifact into memory.
   A 23 GB `.lammpstrj` is just a slower response, not an OOM kill.
 
+### Animated previews
+
+A preview is a pair: the opening frame as a PDB topology and, when the run has
+more than one frame, the sampled frames as a DCD trajectory
+(``previews/artifact_<id>_<topo8><dcd8>.{pdb,dcd}``). Frames are budgeted by
+size (about 250,000 atoms total), so a 12,750-atom run gets 8 frames and a
+200k-atom run gets 1.
+
+The viewer loads the PDB with NGL, parses the DCD with NGL's ``autoLoad`` into
+a frame object and attaches it with ``addTrajectory`` — the plain
+``addTrajectory(url)`` overload is NGL's remote-trajectory protocol and throws
+on a local file.
+
 ### Previews of enormous trajectories
 
 A 3D preview needs the opening frames, not the file. Above
