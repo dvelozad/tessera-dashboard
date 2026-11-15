@@ -114,6 +114,33 @@ tessera_ctl.py raw DELETE /runs/42/tags/production
 `link_type` is one of `github`, `overleaf`, `dataset`, `url`. Adding the same
 tag twice is a no-op, so scripts can be re-run safely.
 
+## Every entry must carry its metadata
+
+A run that arrives without thermodynamic output is a dead end: nobody can plot
+temperature, pressure or energy from it, and it will be re-run by someone who
+could not tell it had already been done. So a push is not finished until the
+entry has all of the following:
+
+| Required | Why | What to do if it is missing |
+|---|---|---|
+| `log.lammps` (LAMMPS) or `.edr` (GROMACS) | the only source of T / P / E series | **stop and fix the run**: enable `thermo` output, keep the `.edr`. If the campaign genuinely did not write one, say so in the description and label the run `no-thermo` |
+| input deck (`in.*`, `run.lmp`, `.mdp`) | ensemble, thermostat, force field, timestep | copy it into the run directory before pushing |
+| data / topology (`.lmp`, `data.*`, `.tpr`, `.gro`) | atom count, composition, 3D preview | same |
+| trajectory | preview and structural analyses | if there is none, push the rest anyway and label it `no-trajectory` |
+| description | what the run physically is | never leave it empty |
+| labels | how it is used (`production`, `paper-1`, `benchmark`, `needs-review`, `superseded`) | at least one |
+
+Verify before you walk away:
+
+```bash
+tessera_ctl.py raw GET /runs/<id>/observables   # must be non-empty
+```
+
+If it returns nothing, the log was not parsed: check the file is LAMMPS output
+and not an exchange or build log. On the server,
+`scripts/enrich_runs.py --run-id <id>` re-parses stored logs after the fact —
+but it can only recover what was actually saved.
+
 ## Rule: file what matters
 
 Every agent working on a project under `~/projects` or `/data/...` is expected to

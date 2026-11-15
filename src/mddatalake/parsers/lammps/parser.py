@@ -96,6 +96,24 @@ class LammpsParser:
         if log_file.exists():
             return log_file
 
+        # Real campaigns rarely name it log.lammps: launch.log, gcs.log,
+        # run.out and stdout.txt are all common. Prefer a file that actually
+        # looks like LAMMPS output over an arbitrary .log next to it.
+        candidates = []
+        for pattern in ("*.log", "*.out", "*.txt", "log*"):
+            candidates.extend(sorted(self.directory.glob(pattern)))
+        for candidate in candidates:
+            if not candidate.is_file():
+                continue
+            try:
+                if candidate.stat().st_size > 200 * 1024 * 1024:
+                    continue
+                head = candidate.open("r", errors="replace").read(4096)
+            except OSError:
+                continue
+            if "LAMMPS (" in head or ("Step" in head and "Temp" in head):
+                return candidate
+
         # Try to find files matching log.* pattern
         log_files = list(self.directory.glob("log.*"))
         if log_files:
