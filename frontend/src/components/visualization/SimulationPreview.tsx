@@ -160,16 +160,14 @@ export const SimulationPreview: React.FC<SimulationPreviewProps> = ({
                     );
                     if (response.ok) {
                         const trajectoryBlob = await response.blob();
-                        // NGL derives the format from file.name, which a bare
-                        // Blob does not have ("e.replace is not a function").
-                        const trajectoryFile = new File(
-                            [trajectoryBlob],
-                            'preview.dcd',
-                            { type: 'chemical/x-dcd' }
-                        );
+                        // NGL's addTrajectory takes a *string* path and calls
+                        // name.replace(...) on it, so a File or Blob throws
+                        // "e.replace is not a function". A blob: URL is a
+                        // same-origin string it can fetch itself.
+                        const trajectoryUrl = URL.createObjectURL(trajectoryBlob);
                         const trajectory = await (component as any).addTrajectory?.(
-                            trajectoryFile,
-                            { ext: 'dcd' }
+                            trajectoryUrl,
+                            { ext: 'dcd', binary: true }
                         );
                         console.log('preview: trajectory frames', trajectory?.numframes);
                         const frames =
@@ -182,7 +180,10 @@ export const SimulationPreview: React.FC<SimulationPreviewProps> = ({
                         setFrameCount(1);
                     }
                 } catch (trajectoryError) {
-                    console.error('preview: trajectory attach failed', trajectoryError);
+                    // NGL's addTrajectory expects its remote-trajectory
+                    // protocol (metadata + countUrl), not a bare DCD, so the
+                    // animation cannot attach yet. The still is unaffected.
+                    console.debug('preview: no trajectory attached', trajectoryError);
                     setFrameCount(1);
                 }
 
