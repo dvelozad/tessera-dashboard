@@ -463,6 +463,14 @@
 }
 
 /* === TABS BELOW GRID (for data quality, artifacts, etc.) === */
+.rdp-section-card {
+  margin-bottom: var(--space-6);
+}
+
+.rdp-section-body {
+  padding: var(--space-5);
+}
+
 .rdp-section-tabs {
   display: flex;
   gap: 0;
@@ -490,4 +498,249 @@
 .rdp-section-tab--active {
   color: var(--primary-600);
   border-bottom-color: var(--primary-600);
+}
+
+/* =========================================================================
+   Phone layout (< 760px), toggled by useIsNarrow -> .rdp--narrow.
+   Follows the run screen in the mobile handoff: full-bleed surfaces,
+   dark 200px viewer hero, 10px key/value rows, 56px action bar.
+   ========================================================================= */
+
+.rdp--narrow {
+  padding: 0;
+  min-width: 0;
+}
+
+/* Top bar: 44px back target + one-line breadcrumb */
+.rdp--narrow .rdp-topbar {
+  height: 52px;
+  margin-bottom: 0;
+  padding: 0 16px 0 4px;
+  gap: 4px;
+  justify-content: flex-start;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.rdp--narrow .rdp-topbar__back {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--fg-default);
+}
+
+.rdp--narrow .rdp-topbar__back svg {
+  width: 22px;
+  height: 22px;
+}
+
+.rdp--narrow .rdp-topbar__breadcrumb {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Single column, cards become full-bleed bands */
+.rdp--narrow .rdp-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  margin-bottom: 8px;
+}
+
+.rdp--narrow .rdp-card {
+  border: 0;
+  border-bottom: 1px solid var(--border-default);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.rdp--narrow .rdp-viewer {
+  min-height: 200px;
+  background: #0d1117;
+}
+
+/* Metadata */
+.rdp--narrow .rdp-meta {
+  padding: 16px;
+  gap: 10px;
+}
+
+.rdp--narrow .rdp-meta__eyebrow {
+  display: none;
+}
+
+.rdp--narrow .rdp-meta__name {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  line-height: 1.25;
+  word-break: break-all;
+}
+
+.rdp--narrow .rdp-meta__tags {
+  gap: 6px;
+}
+
+.rdp--narrow .rdp-meta__tag {
+  font-size: 11px;
+}
+
+.rdp--narrow .rdp-kvlist {
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0;
+  margin-top: 6px;
+  border-top: 1px solid var(--border-default);
+  font-size: 14px;
+}
+
+.rdp--narrow .rdp-kvlist__key,
+.rdp--narrow .rdp-kvlist__val {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.rdp--narrow .rdp-kvlist__val {
+  padding-left: 16px;
+  font-size: 13px;
+  text-align: right;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.rdp--narrow .rdp-completeness {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.rdp--narrow .rdp-completeness__title {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.rdp--narrow .rdp-completeness__label {
+  font-size: 13px;
+}
+
+.rdp--narrow .rdp-completeness__track {
+  order: 1;
+  flex-basis: 100%;
+}
+
+/* Section tabs scroll sideways instead of wrapping */
+.rdp--narrow .rdp-section-card {
+  margin-bottom: 0;
+  border-top: 1px solid var(--border-default);
+}
+
+.rdp--narrow .rdp-section-body {
+  padding: 0 16px 16px;
+  min-width: 0;
+}
+
+.rdp--narrow .rdp-section-tabs {
+  margin: 0 -16px 16px;
+  padding: 0 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.rdp--narrow .rdp-section-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.rdp--narrow .rdp-section-tab {
+  flex: none;
+  height: 44px;
+  padding: 0 14px;
+  font-size: 13px;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.rdp--narrow .rdp-section-tab--active {
+  font-weight: 600;
+}
+
+/* Artifacts list */
+.rdp--narrow .rdp-artifacts {
+  padding: 0;
+}
+
+.rdp--narrow .rdp-artifacts__header {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rdp--narrow .rdp-artifact-item {
+  gap: 12px;
+  min-height: 56px;
+}
+
+.rdp--narrow .rdp-artifact-item > div {
+  min-width: 0;
+}
+
+.rdp--narrow .rdp-artifact-item__name {
+  overflow-wrap: anywhere;
+}
+
+.rdp--narrow .rdp-artifact-item__dl {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Sticky bottom action bar */
+.rdp-actionbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-default);
+}
+
+.rdp-actionbar .rdp-topbar__btn {
+  flex: 1;
+  height: 44px;
+  padding: 0 8px;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 5px;
+  box-sizing: border-box;
+  color: var(--primary-600);
+}
+
+.rdp-actionbar .rdp-topbar__btn--download {
+  background: var(--primary-500);
+  border-color: var(--primary-500);
+  color: #fff;
+}
+
+.rdp-actionbar .rdp-topbar__btn--danger {
+  color: var(--critical-500);
+}
+
+.rdp-actionbar .rdp-topbar__btn--download:hover {
+  background: var(--primary-600);
+  border-color: var(--primary-600);
 }

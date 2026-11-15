@@ -9,6 +9,7 @@ import { DeleteConfirmDialog } from '@/components/browser/DeleteConfirmDialog';
 import { UploadArtifactsDialog } from '@/components/artifacts/UploadArtifactsDialog';
 import { ObservablePlots } from '@/components/properties/ObservablePlots';
 import { LogMetadata } from '@/components/properties/LogMetadata';
+import { useIsNarrow } from '@/hooks/useIsNarrow';
 import type { SimulationRun, Artifact, Observable } from '@/types/visualization';
 import './RunDetailPage.css';
 
@@ -32,6 +33,7 @@ export const RunDetailPage: React.FC = () => {
   const { runId } = useParams<{ runId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const narrow = useIsNarrow();
   // A run opened from a project should return to that project, not the datalake.
   const origin = (location.state || {}) as {
     from?: string;
@@ -187,13 +189,36 @@ export const RunDetailPage: React.FC = () => {
   const methodLabel = METHOD_LABELS[method] || method;
   const score = run.completeness_score || 0;
   const qualityColor = score >= 80 ? 'green' : score >= 50 ? 'orange' : 'red';
+  const backLabel = fromProject ? 'Back to project' : 'Back to runs';
+
+  // In the top bar on desktop, in the sticky bottom bar on phones.
+  const runActions = (
+    <>
+      <button className="rdp-topbar__btn rdp-topbar__btn--download" onClick={handleDownloadAll}>
+        <DownloadIcon /> Download
+      </button>
+      <button className="rdp-topbar__btn" onClick={() => setEditDialogOpen(true)}>
+        <EditIcon /> Edit
+      </button>
+      <button
+        className="rdp-topbar__btn rdp-topbar__btn--danger"
+        onClick={() => setDeleteDialogOpen(true)}
+      >
+        <TrashIcon /> Delete
+      </button>
+    </>
+  );
 
   return (
-    <div className="rdp">
+    <div className={narrow ? 'rdp rdp--narrow' : 'rdp'}>
       {/* Top bar */}
       <div className="rdp-topbar">
-        <button className="rdp-topbar__back" onClick={goBack}>
-          <ArrowLeftIcon /> {fromProject ? 'Back to project' : 'Back to runs'}
+        <button
+          className="rdp-topbar__back"
+          onClick={goBack}
+          aria-label={narrow ? backLabel : undefined}
+        >
+          <ArrowLeftIcon /> {!narrow && backLabel}
         </button>
 
         <div className="rdp-topbar__breadcrumb">
@@ -201,20 +226,7 @@ export const RunDetailPage: React.FC = () => {
           <span>{run.run_name}</span>
         </div>
 
-        <div className="rdp-topbar__actions">
-          <button className="rdp-topbar__btn" onClick={handleDownloadAll}>
-            <DownloadIcon /> Download
-          </button>
-          <button className="rdp-topbar__btn" onClick={() => setEditDialogOpen(true)}>
-            <EditIcon /> Edit
-          </button>
-          <button
-            className="rdp-topbar__btn rdp-topbar__btn--danger"
-            onClick={() => setDeleteDialogOpen(true)}
-          >
-            <TrashIcon /> Delete
-          </button>
-        </div>
+        {!narrow && <div className="rdp-topbar__actions">{runActions}</div>}
       </div>
 
       {/* Two-column grid */}
@@ -226,7 +238,7 @@ export const RunDetailPage: React.FC = () => {
               <div className="rdp-viewer__pattern" />
               <SimulationPreview
                 runId={parseInt(runId || '0')}
-                height={400}
+                height={narrow ? 200 : 400}
                 totalTime={run.total_time}
               />
             </div>
@@ -354,6 +366,7 @@ export const RunDetailPage: React.FC = () => {
 
             {/* Completeness bar */}
             <div className="rdp-completeness">
+              {narrow && <span className="rdp-completeness__title">Completeness</span>}
               <div className="rdp-completeness__track">
                 <div
                   className={`rdp-completeness__fill rdp-completeness__fill--${qualityColor}`}
@@ -367,8 +380,8 @@ export const RunDetailPage: React.FC = () => {
       </div>
 
       {/* Section tabs below grid */}
-      <div className="rdp-card" style={{ marginBottom: 'var(--space-6)' }}>
-        <div style={{ padding: 'var(--space-5)' }}>
+      <div className="rdp-card rdp-section-card">
+        <div className="rdp-section-body">
           <div className="rdp-section-tabs">
             <button
               className={`rdp-section-tab ${sectionTab === 0 ? 'rdp-section-tab--active' : ''}`}
@@ -484,6 +497,8 @@ export const RunDetailPage: React.FC = () => {
           )}
         </div>
       </div>
+
+      {narrow && <div className="rdp-actionbar">{runActions}</div>}
 
       {/* Dialogs */}
       <EditRunDialog
