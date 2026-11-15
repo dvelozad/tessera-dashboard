@@ -158,6 +158,9 @@ def previews(
     retry_failed: bool = typer.Option(
         True, "--retry-failed/--no-retry-failed", help="Retry artifacts whose preview failed"
     ),
+    force: bool = typer.Option(
+        False, "--force", help="Regenerate previews that already exist"
+    ),
 ):
     """
     Build 3D previews for trajectories that do not have one.
@@ -167,7 +170,7 @@ def previews(
     """
     from mddatalake.cli.commands.previews import previews_command
 
-    asyncio.run(previews_command(limit=limit, retry_failed=retry_failed))
+    asyncio.run(previews_command(limit=limit, retry_failed=retry_failed, force=force))
 
 
 @app.command()

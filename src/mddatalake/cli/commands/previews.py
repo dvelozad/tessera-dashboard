@@ -15,7 +15,7 @@ console = Console()
 logger = logging.getLogger(__name__)
 
 
-async def previews_command(limit: int = 0, retry_failed: bool = True) -> int:
+async def previews_command(limit: int = 0, retry_failed: bool = True, force: bool = False) -> int:
     """Extract previews for trajectory artifacts that do not have one."""
     from sqlalchemy import select
 
@@ -30,6 +30,10 @@ async def previews_command(limit: int = 0, retry_failed: bool = True) -> int:
     states = ["pending"]
     if retry_failed:
         states.append("failed")
+    if force:
+        # Regenerate previews that already exist, e.g. after the frame count
+        # or the extraction changed.
+        states.append("ready")
 
     # "processing" older than this means the attempt died (crash, restart).
     stale_before = datetime.now(timezone.utc) - timedelta(minutes=30)
