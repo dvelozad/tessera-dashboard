@@ -149,13 +149,32 @@ export const SimulationPreview: React.FC<SimulationPreviewProps> = ({
 
                 console.log('Component loaded:', component);
                 componentRef.current = component;
-                {
-                    // A multi-model PDB is an animation: NGL exposes the frame
-                    // count on the structure's trajectory.
-                    const trajectory = (component as any)?.structure?.trajectory;
-                    const frames =
-                        trajectory?.numframes ?? trajectory?.frameCount ?? 1;
-                    setFrameCount(Math.max(1, Number(frames) || 1));
+
+                // The still is a PDB topology; when the run has an animated
+                // preview, a DCD sits next to it and NGL plays it in place.
+                try {
+                    const token = localStorage.getItem('mddatalake_token');
+                    const response = await fetch(
+                        `/api/v1/visualizations/runs/${runId}/preview/trajectory`,
+                        { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+                    );
+                    if (response.ok) {
+                        const trajectoryBlob = await response.blob();
+                        const trajectory = await (component as any).addTrajectory?.(
+                            trajectoryBlob,
+                            { ext: 'dcd' }
+                        );
+                        const frames =
+                            trajectory?.numframes ??
+                            trajectory?.frameCount ??
+                            (component as any)?.structure?.trajectory?.numframes ??
+                            1;
+                        setFrameCount(Math.max(1, Number(frames) || 1));
+                    } else {
+                        setFrameCount(1);
+                    }
+                } catch {
+                    setFrameCount(1);
                 }
 
                 if (!component || !component.structure) {

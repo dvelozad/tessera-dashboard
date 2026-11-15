@@ -464,6 +464,44 @@ async def get_trajectory_preview(
         )
 
 
+@router.get("/runs/{run_id}/preview/trajectory")
+async def get_preview_trajectory(run_id: int, db: AsyncSession = Depends(get_db)):
+    """Animated companion of the preview still: the DCD trajectory.
+
+    404 when the preview is a single frame, so the viewer can skip it.
+    """
+    from mddatalake.core.enums import ArtifactType
+    from mddatalake.storage import get_storage_backend
+
+    result = await db.execute(
+        select(Artifact)
+        .where(Artifact.simulation_run_id == run_id)
+        .where(Artifact.artifact_type == ArtifactType.TRAJECTORY)
+        .order_by(Artifact.file_size_bytes.desc())
+        .limit(1)
+    )
+    artifact = result.scalar_one_or_none()
+    if not artifact or not artifact.preview_cache_key:
+        raise HTTPException(404, "No preview for this run")
+
+    key = artifact.preview_cache_key
+    if not key.endswith(".pdb"):
+        raise HTTPException(404, "Preview has no trajectory")
+
+    trajectory_key = key[: -len(".pdb")] + ".dcd"
+    storage = get_storage_backend()
+    if not await storage.exists(trajectory_key):
+        raise HTTPException(404, "Preview has no trajectory")
+
+    temp_file = Path(tempfile.mktemp(suffix=".dcd"))
+    await storage.download(trajectory_key, temp_file)
+    return FileResponse(
+        temp_file,
+        media_type="chemical/x-dcd",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
 @router.post("/runs/{run_id}/preview/regenerate")
 async def regenerate_preview(
     run_id: int,

@@ -143,14 +143,24 @@ class PreviewExtractionService:
                     atom_type_mapping=atom_type_mapping
                 )
 
-                # Upload preview to storage
-                preview_checksum = compute_checksum(output_path)
+                # Upload the still, and the animation when there is one. Both
+                # share a base name built from their checksums, so a
+                # regenerated preview is always a new pair of blobs.
+                topology_file = output_path.with_suffix(".pdb")
+                trajectory_file = output_path.with_suffix(".dcd")
+
+                topology_checksum = compute_checksum(topology_file)
+                base = f"previews/artifact_{artifact.id}_{topology_checksum[:8]}"
+
+                if trajectory_file.exists():
+                    trajectory_checksum = compute_checksum(trajectory_file)
+                    base += trajectory_checksum[:8]
+                    await self.storage.upload(
+                        trajectory_file, f"{base}.dcd", trajectory_checksum
+                    )
+
                 preview_key = await self.storage.upload(
-                    output_path,
-                    # Content-addressed: a regenerated preview is a new blob, never an
-                    # overwrite of the previous one.
-                    f"previews/artifact_{artifact.id}_{preview_checksum[:16]}.{output_format.lower()}",
-                    preview_checksum
+                    topology_file, f"{base}.pdb", topology_checksum
                 )
 
                 # Update artifact
@@ -394,10 +404,23 @@ class PreviewExtractionService:
         else:
             output_format = "PDB"  # Default to PDB
 
-        with mda.Writer(str(output_path), universe.atoms.n_atoms, format=output_format) as writer:
-            for i in range(actual_frames):
-                universe.trajectory[i]
-                writer.write(universe.atoms)
+        topology_path = output_path.with_suffix(".pdb")
+        trajectory_path = output_path.with_suffix(".dcd")
+
+        # Topology: the opening frame on its own, which is all a still needs.
+        with mda.Writer(str(topology_path), universe.atoms.n_atoms, format="PDB") as writer:
+            universe.trajectory[0]
+            writer.write(universe.atoms)
+
+        # Trajectory: every extracted frame as binary DCD, the format NGL
+        # actually animates (a multi-model PDB is read as one huge structure).
+        if actual_frames > 1:
+            with mda.Writer(str(trajectory_path), universe.atoms.n_atoms, format="DCD") as writer:
+                for i in range(actual_frames):
+                    universe.trajectory[i]
+                    writer.write(universe.atoms)
+        elif trajectory_path.exists():
+            trajectory_path.unlink()
 
         logger.info(f"Extracted {actual_frames} frames to {output_path}")
 
