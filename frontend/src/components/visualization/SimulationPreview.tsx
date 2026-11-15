@@ -160,10 +160,18 @@ export const SimulationPreview: React.FC<SimulationPreviewProps> = ({
                     );
                     if (response.ok) {
                         const trajectoryBlob = await response.blob();
+                        // NGL derives the format from file.name, which a bare
+                        // Blob does not have ("e.replace is not a function").
+                        const trajectoryFile = new File(
+                            [trajectoryBlob],
+                            'preview.dcd',
+                            { type: 'chemical/x-dcd' }
+                        );
                         const trajectory = await (component as any).addTrajectory?.(
-                            trajectoryBlob,
+                            trajectoryFile,
                             { ext: 'dcd' }
                         );
+                        console.log('preview: trajectory frames', trajectory?.numframes);
                         const frames =
                             trajectory?.numframes ??
                             trajectory?.frameCount ??
@@ -173,7 +181,8 @@ export const SimulationPreview: React.FC<SimulationPreviewProps> = ({
                     } else {
                         setFrameCount(1);
                     }
-                } catch {
+                } catch (trajectoryError) {
+                    console.error('preview: trajectory attach failed', trajectoryError);
                     setFrameCount(1);
                 }
 
