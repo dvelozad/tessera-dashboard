@@ -92,7 +92,12 @@ class Settings(BaseSettings):
     # Trajectory Preview Configuration
     preview_cache_enabled: bool = True
     preview_cache_root: str = "/tmp/mdrepo/preview_cache"
-    preview_frame_count: int = 1  # Extract first N frames
+    # Frames written into the preview: more than one gives the viewer a
+    # short animation. Capped per run by atom count in the extractor.
+    # NGL currently merges a multi-model PDB into one big structure rather
+    # than treating it as frames, so this stays at 1 until the preview ships a
+    # real trajectory format (DCD). Everything downstream already supports N.
+    preview_frame_count: int = 1
     preview_format: Literal["pdb", "dcd"] = "pdb"
     preview_max_file_size_mb: int = 1000  # Above this, read only the head
     # Bytes read from the head of an oversized trajectory for its preview.

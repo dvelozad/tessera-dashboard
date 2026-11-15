@@ -147,7 +147,9 @@ class PreviewExtractionService:
                 preview_checksum = compute_checksum(output_path)
                 preview_key = await self.storage.upload(
                     output_path,
-                    f"previews/artifact_{artifact.id}",
+                    # Content-addressed: a regenerated preview is a new blob, never an
+                    # overwrite of the previous one.
+                    f"previews/artifact_{artifact.id}_{preview_checksum[:16]}.{output_format.lower()}",
                     preview_checksum
                 )
 
@@ -376,6 +378,13 @@ class PreviewExtractionService:
 
         # Extract frames
         actual_frames = min(frame_count, len(universe.trajectory))
+
+        # A frame costs ~80 bytes per atom in PDB. Keep the preview under a
+        # few megabytes: big systems get fewer frames, not a bigger download.
+        n_atoms = universe.atoms.n_atoms
+        if n_atoms > 0:
+            budget = max(1, 250_000 // n_atoms)
+            actual_frames = max(1, min(actual_frames, budget))
 
         # Determine output format
         if output_path.suffix.lower() == ".pdb":

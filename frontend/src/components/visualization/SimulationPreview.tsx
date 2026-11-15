@@ -25,6 +25,27 @@ export const SimulationPreview: React.FC<SimulationPreviewProps> = ({
     const [status, setStatus] = useState<string>('Initializing...');
     const [atomCount, setAtomCount] = useState<number>(0);
     const [representation, setRepresentation] = useState<string>('ball+stick');
+    const [frameCount, setFrameCount] = useState<number>(1);
+    const [frame, setFrame] = useState<number>(0);
+    const [playing, setPlaying] = useState<boolean>(false);
+    const componentRef = useRef<any>(null);
+
+    // Play the extracted frames back as a short animation.
+    useEffect(() => {
+        if (!playing || frameCount < 2) return;
+        const timer = window.setInterval(() => {
+            setFrame((current) => {
+                const next = (current + 1) % frameCount;
+                try {
+                    componentRef.current?.setFrame?.(next);
+                } catch {
+                    /* a viewer without frames simply ignores this */
+                }
+                return next;
+            });
+        }, 180);
+        return () => window.clearInterval(timer);
+    }, [playing, frameCount]);
 
     // Initialize NGL Stage and Load Preview
     useEffect(() => {
@@ -127,6 +148,15 @@ export const SimulationPreview: React.FC<SimulationPreviewProps> = ({
                 }) as any;
 
                 console.log('Component loaded:', component);
+                componentRef.current = component;
+                {
+                    // A multi-model PDB is an animation: NGL exposes the frame
+                    // count on the structure's trajectory.
+                    const trajectory = (component as any)?.structure?.trajectory;
+                    const frames =
+                        trajectory?.numframes ?? trajectory?.frameCount ?? 1;
+                    setFrameCount(Math.max(1, Number(frames) || 1));
+                }
 
                 if (!component || !component.structure) {
                     console.error('Component or structure is null/undefined');
@@ -423,6 +453,38 @@ export const SimulationPreview: React.FC<SimulationPreviewProps> = ({
 
                         <Box sx={{ width: 1, bgcolor: 'rgba(255,255,255,0.2)', mx: 1 }} />
 
+                        {frameCount > 1 && (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 1 }}>
+                                <Button
+                                    size="small"
+                                    onClick={() => setPlaying((value) => !value)}
+                                    sx={{ color: 'white', minWidth: 'auto' }}
+                                >
+                                    {playing ? 'Pause' : 'Play'}
+                                </Button>
+                                <input
+                                    type="range"
+                                    min={0}
+                                    max={frameCount - 1}
+                                    value={frame}
+                                    aria-label="Frame"
+                                    onChange={(event) => {
+                                        const next = Number(event.target.value);
+                                        setFrame(next);
+                                        setPlaying(false);
+                                        try {
+                                            componentRef.current?.setFrame?.(next);
+                                        } catch {
+                                            /* ignore */
+                                        }
+                                    }}
+                                    style={{ width: 110, accentColor: 'var(--accent-500)' }}
+                                />
+                                <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: 'rgba(255,255,255,0.75)' }}>
+                                    {frame + 1}/{frameCount}
+                                </span>
+                            </Box>
+                        )}
                         <Button
                             size="small"
                             onClick={resetView}
