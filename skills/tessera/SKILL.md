@@ -26,6 +26,18 @@ installed copy at `~/.local/share/tessera/tessera_ctl.py`. It needs only Python 
 tessera_ctl.py projects list
 ```
 
+**Hosts that cannot reach the server** (pckr258 is on a different network and
+cannot open the dashboard) run the call through a host that can:
+
+```bash
+export TESSERA_SSH=bigmsi
+```
+
+With that set, every metadata command is executed on bigmsi over SSH. `push`
+still runs **locally**, on the machine holding the data, because that is where
+the blobs and obleas live; only the JSON record needs to reach the server, and
+bigmsi imports it automatically within two minutes.
+
 ## The two ways data enters
 
 **1. A whole run directory (the normal path for a finished simulation).**
@@ -101,6 +113,30 @@ tessera_ctl.py raw DELETE /runs/42/tags/production
 
 `link_type` is one of `github`, `overleaf`, `dataset`, `url`. Adding the same
 tag twice is a no-op, so scripts can be re-run safely.
+
+## Rule: file what matters
+
+Every agent working on a project under `~/projects` or `/data/...` is expected to
+keep Tessera current, not to leave results only on the cluster:
+
+1. **After a campaign, batch or paper run**, choose the *representative* set —
+   the production trajectory, its input deck, the log, the topology, the
+   analysis outputs that back a figure — and `push` each run. Do not dump the
+   entire scratch tree; file what a colleague would need to understand and
+   reproduce the result.
+2. **Each pushed run gets a description** saying what it physically is
+   (method, ensemble, temperature, system) and a label or two from the shared
+   vocabulary: `production`, `paper-1`, `benchmark`, `needs-review`,
+   `superseded`.
+3. **The project carries the context**: description, lead, institution and the
+   repository/Overleaf/dataset links, so the lake explains itself without you.
+4. **Never invent metadata.** Unknown PI, funding or science goes in as unknown
+   and gets asked about, not guessed.
+5. **Re-run `push` is safe.** Blobs are content-addressed, so a second push only
+   adds what is new and re-attaches analyses.
+
+If a run matters enough to cite, plot or hand over, it matters enough to be in
+Tessera.
 
 ## Rules
 

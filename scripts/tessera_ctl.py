@@ -51,6 +51,9 @@ def cached_token() -> str | None:
 
 
 def login(force: bool = False) -> str:
+    if os.environ.get("TESSERA_SSH"):
+        return "ssh"
+
     token = None if force else cached_token()
     if token:
         return token
@@ -82,7 +85,42 @@ def login(force: bool = False) -> str:
     return token
 
 
+def call_via_ssh(method: str, path: str, payload: dict | None = None) -> object:
+    """Run the request on a host that can reach the server, over SSH."""
+    import shlex
+
+    host = os.environ["TESSERA_SSH"]
+    # Non-interactive SSH does not source the profile, so name the path.
+    remote_ctl = os.environ.get("TESSERA_REMOTE_CTL", "~/.local/bin/tessera-ctl")
+    command = f"{remote_ctl} raw {method} {path}"
+    if payload is not None:
+        command += " --data " + shlex.quote(json.dumps(payload))
+
+    result = subprocess.run(
+        [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            # A stale ControlMaster socket on the client refuses new sessions.
+            "-o",
+            "ControlMaster=no",
+            "-o",
+            "ControlPath=none",
+            host,
+            command,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise TesseraError(f"remote call failed: {result.stderr.strip()[:300] or result.stdout[:300]}")
+    return json.loads(result.stdout) if result.stdout.strip() else None
+
+
 def call(method: str, path: str, payload: dict | None = None) -> object:
+    if os.environ.get("TESSERA_SSH"):
+        return call_via_ssh(method, path, payload)
+
     token = login()
     url = f"{base_url()}/api/v1/{path.lstrip('/')}"
     data = json.dumps(payload).encode() if payload is not None else None
@@ -156,6 +194,11 @@ def cmd_runs(args) -> None:
 
 
 def cmd_upload(args) -> None:
+    if os.environ.get("TESSERA_SSH"):
+        raise TesseraError(
+            "artifacts upload needs the file on the server side; "
+            "use `push <dir>` on the host that holds the data instead."
+        )
     token = login()
     files = [Path(item) for item in args.files]
     for path in files:
@@ -183,8 +226,12 @@ def cmd_push(args) -> None:
     script = Path(__file__).resolve().parent / ".." / "src"
     env = dict(os.environ)
     env["PYTHONPATH"] = f"{script.resolve()}:{env.get('PYTHONPATH', '')}"
+    interpreter = os.environ.get("TESSERA_PUSH_PYTHON")
+    if not interpreter:
+        candidate = Path.home() / "tessera-src" / ".venv" / "bin" / "python"
+        interpreter = str(candidate) if candidate.is_file() else sys.executable
     command = [
-        sys.executable,
+        interpreter,
         "-m",
         "mddatalake.cli.main",
         "push",
