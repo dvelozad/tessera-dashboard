@@ -34,3 +34,8 @@ done
 # fills in on its own without hammering Drive.
 "$PYTHON" -m mddatalake.cli.main previews --limit "${TESSERA_PREVIEWS_PER_TICK:-2}" 2>&1 \
     | sed "s|^|$(date -Is) |"
+
+# Fill in what the import could not: re-parse the stored logs of newly
+# arrived runs and derive composition from their data files.
+"$PYTHON" "$APP_DIR/scripts/enrich_runs.py" --recent-minutes 30 \
+    | grep -E "enriched|\+ " | sed "s|^|$(date -Is) |"

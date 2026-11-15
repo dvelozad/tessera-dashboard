@@ -30,6 +30,7 @@ from mddatalake.ingestion import IngestionService  # noqa: E402
 from mddatalake.parsers import detect_engine  # noqa: E402
 from mddatalake.parsers.lammps import LammpsParser  # noqa: E402
 from mddatalake.storage import get_storage_backend  # noqa: E402
+from mddatalake.utils.composition import lammps_composition  # noqa: E402
 
 MAX_LOG_BYTES = 200 * 1024 * 1024
 
@@ -38,15 +39,27 @@ async def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-id", type=int)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--recent-minutes",
+        type=int,
+        help="only runs created within this many minutes (used by the import timer)",
+    )
     args = parser.parse_args()
 
     storage = get_storage_backend()
     enriched = skipped = failed = 0
 
     async with AsyncSessionLocal() as db:
-        query = select(SimulationRun).options(selectinload(SimulationRun.engine)).order_by(SimulationRun.id)
+        query = select(SimulationRun).options(
+            selectinload(SimulationRun.engine), selectinload(SimulationRun.system)
+        ).order_by(SimulationRun.id)
         if args.run_id:
             query = query.where(SimulationRun.id == args.run_id)
+        if args.recent_minutes:
+            from datetime import datetime, timedelta, timezone
+
+            cutoff = datetime.now(timezone.utc) - timedelta(minutes=args.recent_minutes)
+            query = query.where(SimulationRun.created_at >= cutoff)
         runs = (await db.execute(query)).scalars().all()
 
         for run in runs:
@@ -69,12 +82,8 @@ async def main() -> int:
                 for a in artifacts
                 if "log" in a.file_name.lower()
                 or a.file_name.lower().endswith((".out", ".txt"))
-                or (a.artifact_type and a.artifact_type.value == "LOG")
+                or (a.artifact_type and (a.artifact_type.value or "").lower() == "log")
             ]
-            if not logs:
-                skipped += 1
-                print(f"{run.id:>3} {run.run_name:<20} no log artifact")
-                continue
 
             with tempfile.TemporaryDirectory(prefix="tessera-enrich-") as tmp:
                 work = Path(tmp)
@@ -89,17 +98,36 @@ async def main() -> int:
                         print(f"    could not fetch {artifact.file_name}: {error}")
 
                 for artifact in artifacts:
-                    if artifact.artifact_type and artifact.artifact_type.value == "INPUT":
+                    if artifact.artifact_type and artifact.artifact_type.value.lower() == "input":
                         try:
                             await storage.download(artifact.storage_key, work / artifact.file_name)
                         except Exception:  # noqa: BLE001
                             pass
 
-                if not got:
+                # A LAMMPS data file also tells us the composition.
+                topology = [
+                    a
+                    for a in artifacts
+                    if a.artifact_type
+                    and (a.artifact_type.value or "").lower() == "topology"
+                    and (a.file_size_bytes or 0) < 200 * 1024 * 1024
+                ]
+                data_path = None
+                if topology:
+                    data_path = work / topology[0].file_name
+                    try:
+                        await storage.download(topology[0].storage_key, data_path)
+                    except Exception:  # noqa: BLE001
+                        data_path = None
+
+                if not got and not topology:
                     skipped += 1
+                    print(f"{run.id:>3} {run.run_name:<20} no log or topology artifact")
                     continue
 
                 try:
+                    if not got:
+                        raise RuntimeError("no log artifact")
                     # The run already knows its engine; detection needs the
                     # input script's name, which a partial download lacks.
                     declared = (run.engine.name or "").lower() if run.engine else ""
@@ -146,6 +174,15 @@ async def main() -> int:
                         if not args.dry_run:
                             setattr(run, field, value)
                         changed.append(field)
+
+                if data_path is not None and run.system is not None:
+                    current = (run.system.composition_description or "").strip()
+                    if current in ("", "Unknown"):
+                        formula = lammps_composition(data_path)
+                        if formula and formula != "Unknown":
+                            if not args.dry_run:
+                                run.system.composition_description = formula
+                            changed.append(f"composition={formula}")
 
                 if changed:
                     enriched += 1

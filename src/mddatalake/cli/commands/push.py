@@ -86,9 +86,23 @@ async def push_command(
         timeout=float(settings.rclone_timeout_seconds),
     )
 
+    # Composition comes from the data file, which is local here.
+    from mddatalake.utils.composition import lammps_composition
+
     engine_name = detect_engine(directory)
     parser = LammpsParser(directory) if engine_name == "lammps" else GromacsParser(directory)
     metadata = parser.parse()
+
+    if engine_name == "lammps":
+        data_files = [Path(p) for p in (metadata.get("files", {}).get("data") or [])]
+        if isinstance(metadata.get("files", {}).get("data"), str):
+            data_files = [Path(metadata["files"]["data"])]
+        for data in data_files:
+            if data.is_file():
+                formula = lammps_composition(data)
+                if formula:
+                    metadata["composition"] = formula
+                    break
 
     from mddatalake.storage.keys import cas_key
     from mddatalake.utils.files import is_ingestable, resolve_for_read

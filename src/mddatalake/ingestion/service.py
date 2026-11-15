@@ -326,7 +326,11 @@ class IngestionService:
 
         # Find or create system
         # Use system description from atom mapping if available
-        composition_desc = metadata.get("system_description") or metadata.get("composition", "Unknown")
+        composition_desc = (
+            metadata.get("system_description")
+            or metadata.get("composition")
+            or "Unknown"
+        )
         system = await self._get_or_create_system(
             n_atoms=metadata.get("n_atoms", 0), composition_description=composition_desc
         )
