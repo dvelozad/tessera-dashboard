@@ -77,6 +77,47 @@ async def main() -> int:
                 )
             ).first() is not None
 
+            declared_engine = (run.engine.name or "").lower() if run.engine else ""
+
+            # GROMACS thermodynamics live in the .edr files; obleas reads them
+            # directly, so no trajectory is needed for this part.
+            if "gromacs" in declared_engine and not has_observables:
+                from dataclasses import replace
+
+                from mddatalake.analysis.obleas import ObleasRunner
+                from mddatalake.analysis.service import store_series
+                from mddatalake.core.config import settings as cfg
+
+                edrs = [a for a in artifacts if a.file_name.lower().endswith(".edr")]
+                if edrs:
+                    runner = ObleasRunner(cfg.obleas_bin, timeout=600)
+                    collected = []
+                    with tempfile.TemporaryDirectory(prefix="tessera-edr-") as tmp2:
+                        work2 = Path(tmp2)
+                        for artifact in edrs:
+                            target = work2 / artifact.file_name
+                            try:
+                                await storage.download(artifact.storage_key, target)
+                                series = await runner.energy_from_edr(work2, target)
+                            except Exception as error:  # noqa: BLE001
+                                print(f"    {artifact.file_name}: {error}")
+                                continue
+                            if len(edrs) > 1:
+                                series = [
+                                    replace(item, name=f"{target.stem}/{item.name}")
+                                    for item in series
+                                ]
+                            collected.extend(series)
+                    if collected:
+                        if not args.dry_run:
+                            await store_series(db, run.id, collected)
+                            await db.commit()
+                        enriched += 1
+                        print(f"{run.id:>3} {run.run_name:<20} + {len(collected)} gromacs observables ({len(edrs)} edr)")
+                    else:
+                        skipped += 1
+                    continue
+
             logs = [
                 a
                 for a in artifacts

@@ -86,6 +86,24 @@ still yields full thermodynamics, because the log is enough.
   config is retried once without them so `rdf`/`density` still land.
 * `OBLEAS_MAX_TRAJECTORY_GB` can skip very large trajectories; 0 means no limit.
 
+## Building obleas on bigmsi
+
+The binary is C++14 + MPI, and bigmsi has no `mpicxx`. Conda supplies one
+without touching the system:
+
+```bash
+conda create -y -n obleas-build -c conda-forge openmpi zlib
+export PATH=$HOME/miniforge3/envs/obleas-build/bin:$PATH
+export OMPI_CXX=/usr/bin/g++        # conda's wrapper expects its own compiler
+
+rsync -a pckr258:/data/.../obleas/{src,Makefile,VERSION} ~/obleas-src/
+cd ~/obleas-src && make -j$(nproc)
+ln -sf ~/obleas-src/bin/obleas ~/.local/bin/obleas
+```
+
+The resulting binary runs without any `LD_LIBRARY_PATH` help. `OBLEAS_BIN`
+points the app at it; `enrich_runs.py` uses it for GROMACS `.edr` files.
+
 ## Next steps
 
 * GROMACS structural analyses (`obleas gmx rdf/msd/density`) are not wired yet —
