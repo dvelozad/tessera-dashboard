@@ -99,6 +99,7 @@ export const DatalakePage: React.FC = () => {
   const [page, setPage] = useState(1);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [hoverId, setHoverId] = useState<number | null>(null);
+  const [newestFirst, setNewestFirst] = useState(true);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['runs', 'datalake'],
@@ -125,17 +126,22 @@ export const DatalakePage: React.FC = () => {
     });
   }, [runs, q]);
 
-  const filtered = useMemo(
-    () =>
-      searched.filter((run) => {
-        if (projectFilter && run.project_name !== projectFilter) return false;
-        if (engines.length && !engines.includes(engineBucket(run.engine?.name))) return false;
-        if (methods.length && !methods.includes(methodOf(run.simulation_method))) return false;
-        if ((run.completeness_score ?? 0) < minQ) return false;
-        return true;
-      }),
-    [searched, engines, methods, minQ, projectFilter]
-  );
+  const filtered = useMemo(() => {
+    const rows = searched.filter((run) => {
+      if (projectFilter && run.project_name !== projectFilter) return false;
+      if (engines.length && !engines.includes(engineBucket(run.engine?.name))) return false;
+      if (methods.length && !methods.includes(methodOf(run.simulation_method))) return false;
+      if ((run.completeness_score ?? 0) < minQ) return false;
+      return true;
+    });
+
+    // Newest or oldest upload first; rows without a date sort last either way.
+    const time = (run: RunRow) => {
+      const value = run.created_at ? new Date(run.created_at).getTime() : NaN;
+      return Number.isNaN(value) ? -Infinity : value;
+    };
+    return rows.sort((a, b) => (newestFirst ? time(b) - time(a) : time(a) - time(b)));
+  }, [searched, engines, methods, minQ, projectFilter, newestFirst]);
 
   const projectCount = new Set(filtered.map((r) => r.project_name)).size;
   const ensembleCount = new Set(filtered.map((r) => r.ensemble).filter(Boolean)).size;
@@ -615,14 +621,22 @@ export const DatalakePage: React.FC = () => {
                   {['Run', 'Project', 'Engine', 'Method', 'Conditions', 'Length', 'Atoms', 'Quality', 'Uploaded', ''].map((label, index) => (
                     <span
                       key={`${label}-${index}`}
+                      onClick={label === 'Uploaded' ? () => setNewestFirst((v) => !v) : undefined}
+                      title={label === 'Uploaded' ? 'Sort by upload date' : undefined}
                       style={{
                         ...EYEBROW,
                         padding: '10px 12px',
                         paddingLeft: index === 0 ? 16 : 12,
                         textAlign: index === 5 || index === 6 ? 'right' : 'left',
+                        cursor: label === 'Uploaded' ? 'pointer' : 'default',
+                        userSelect: 'none',
+                        color: label === 'Uploaded' ? 'var(--fg-default)' : undefined,
                       }}
                     >
                       {label}
+                      {label === 'Uploaded' && (
+                        <span style={{ marginLeft: 4 }}>{newestFirst ? '↓' : '↑'}</span>
+                      )}
                     </span>
                   ))}
                 </div>
@@ -634,8 +648,21 @@ export const DatalakePage: React.FC = () => {
               <>
                 <div style={{ display: 'grid', gridTemplateColumns: COLS, background: 'var(--bg-sunken)', borderBottom: '1px solid var(--border-default)', position: 'sticky', top: 0, zIndex: 2 }}>
                   {['Run', 'Project', 'Engine', 'Method', 'Conditions', 'Length', 'Atoms', 'Quality', 'Uploaded', ''].map((label, index) => (
-                    <span key={`g-${label}-${index}`} style={{ ...EYEBROW, padding: '10px 12px', paddingLeft: index === 0 ? 16 : 12, textAlign: index === 5 || index === 6 ? 'right' : 'left' }}>
+                    <span
+                      key={`g-${label}-${index}`}
+                      onClick={label === 'Uploaded' ? () => setNewestFirst((v) => !v) : undefined}
+                      style={{
+                        ...EYEBROW,
+                        padding: '10px 12px',
+                        paddingLeft: index === 0 ? 16 : 12,
+                        textAlign: index === 5 || index === 6 ? 'right' : 'left',
+                        cursor: label === 'Uploaded' ? 'pointer' : 'default',
+                        userSelect: 'none',
+                        color: label === 'Uploaded' ? 'var(--fg-default)' : undefined,
+                      }}
+                    >
                       {label}
+                      {label === 'Uploaded' && <span style={{ marginLeft: 4 }}>{newestFirst ? '↓' : '↑'}</span>}
                     </span>
                   ))}
                 </div>
