@@ -421,7 +421,7 @@ async def get_trajectory_preview(
             headers={
                 "X-Preview-Frame-Count": str(artifact.preview_frame_count or 1),
                 "X-Preview-Generated-At": artifact.preview_generated_at.isoformat() if artifact.preview_generated_at else "",
-                "Cache-Control": "public, max-age=3600"
+                "Cache-Control": "no-cache"
             }
         )
 
@@ -498,7 +498,7 @@ async def get_preview_trajectory(run_id: int, db: AsyncSession = Depends(get_db)
     return FileResponse(
         temp_file,
         media_type="chemical/x-dcd",
-        headers={"Cache-Control": "public, max-age=3600"},
+        headers={"Cache-Control": "no-cache"},
     )
 
 

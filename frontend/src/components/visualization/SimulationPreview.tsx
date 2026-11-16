@@ -101,6 +101,10 @@ export const SimulationPreview: React.FC<SimulationPreviewProps> = ({
                     const token = localStorage.getItem('mddatalake_token');
                     const response = await fetch(`/api/v1/visualizations/runs/${runId}/preview`, {
                         headers: token ? { Authorization: `Bearer ${token}` } : {},
+                        // The URL is stable but the bytes change whenever the
+                        // preview is regenerated; a cached copy showed a stale
+                        // single frame next to the new animation.
+                        cache: 'no-store',
                     });
 
                     if (response.status === 202) {
@@ -156,7 +160,10 @@ export const SimulationPreview: React.FC<SimulationPreviewProps> = ({
                     const token = localStorage.getItem('mddatalake_token');
                     const response = await fetch(
                         `/api/v1/visualizations/runs/${runId}/preview/trajectory`,
-                        { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+                        {
+                            headers: token ? { Authorization: `Bearer ${token}` } : {},
+                            cache: 'no-store',
+                        }
                     );
                     if (response.ok) {
                         const trajectoryBlob = await response.blob();
