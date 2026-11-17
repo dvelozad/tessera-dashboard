@@ -10,7 +10,7 @@ import { UploadArtifactsDialog } from '@/components/artifacts/UploadArtifactsDia
 import { ObservablePlots } from '@/components/properties/ObservablePlots';
 import { LogMetadata } from '@/components/properties/LogMetadata';
 import { useIsNarrow } from '@/hooks/useIsNarrow';
-import type { SimulationRun, Artifact, Observable } from '@/types/visualization';
+import type { SimulationRun, Artifact, Observable, RunUpdate } from '@/types/visualization';
 import './RunDetailPage.css';
 
 const METHOD_COLORS: Record<string, string> = {
@@ -92,7 +92,7 @@ export const RunDetailPage: React.FC = () => {
     fetchRunData();
   }, [runId]);
 
-  const handleEditSave = async (data: { run_name: string; description?: string }) => {
+  const handleEditSave = async (data: RunUpdate) => {
     if (!runId) return;
 
     const result = await apiClient.updateRun(parseInt(runId), data);
@@ -344,6 +344,35 @@ export const RunDetailPage: React.FC = () => {
 
               <span className="rdp-kvlist__key">Engine</span>
               <span className="rdp-kvlist__val">{run.engine.name} {run.engine.version}</span>
+
+              {(
+                [
+                  ['Thermostat', run.thermostat],
+                  ['Barostat', run.barostat],
+                  ['Integrator', run.integrator],
+                  ['Coulomb', run.coulomb_method],
+                ] as const
+              ).map(([label, value]) =>
+                value ? (
+                  <React.Fragment key={label}>
+                    <span className="rdp-kvlist__key">{label}</span>
+                    <span className="rdp-kvlist__val">{value.toUpperCase()}</span>
+                  </React.Fragment>
+                ) : null
+              )}
+              {(run.cutoff_vdw || run.cutoff_coulomb) && (
+                <>
+                  <span className="rdp-kvlist__key">Cutoffs</span>
+                  <span className="rdp-kvlist__val">
+                    {[
+                      run.cutoff_vdw ? `vdW ${run.cutoff_vdw} Å` : null,
+                      run.cutoff_coulomb ? `coul ${run.cutoff_coulomb} Å` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
+                </>
+              )}
 
               <span className="rdp-kvlist__key">Uploaded</span>
               <span className="rdp-kvlist__val">

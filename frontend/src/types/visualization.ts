@@ -103,6 +103,35 @@ export interface SimulationRun {
   // HPC fields
   slurm_job_id?: string | null;
   compute_node?: string | null;
+  // Method details (returned by GET /runs/{id})
+  integrator?: string | null;
+  thermostat?: string | null;
+  barostat?: string | null;
+  coulomb_method?: string | null;
+  cutoff_coulomb?: number | null;
+  cutoff_vdw?: number | null;
+}
+
+/** Fields PATCH /runs/{id} accepts; anything else is rejected with 422. */
+export interface RunUpdate {
+  run_name?: string;
+  description?: string;
+  simulation_method?: string;
+  ensemble?: string;
+  atom_style?: string;
+  integrator?: string;
+  thermostat?: string;
+  barostat?: string;
+  coulomb_method?: string;
+  temperature_target?: number;
+  pressure_target?: number;
+  timestep?: number;
+  n_steps?: number;
+  total_time?: number;
+  cutoff_coulomb?: number;
+  cutoff_vdw?: number;
+  slurm_job_id?: string;
+  compute_node?: string;
 }
 
 export interface Artifact {

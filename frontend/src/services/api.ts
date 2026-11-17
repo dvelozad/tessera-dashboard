@@ -13,6 +13,7 @@ import type {
   Project,
   ProjectLink,
   ProjectCreate,
+  RunUpdate,
 } from '@/types/visualization';
 
 /** A campaign: a named sub-division of a project's runs. */
@@ -257,7 +258,7 @@ class APIClient {
   // Update run
   async updateRun(
     runId: number,
-    data: { run_name?: string; description?: string }
+    data: RunUpdate
   ): Promise<{ id: number; run_name: string; description: string; message: string }> {
     const response = await this.client.patch(`/runs/${runId}`, data);
     return response.data;
