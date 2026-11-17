@@ -5,6 +5,7 @@ import { useIsNarrow } from '@/hooks/useIsNarrow';
 import apiClient, { type RunGroup } from '@/services/api';
 import type { Project, ProjectLink, SimulationRun } from '@/types/visualization';
 import { EditProjectDialog } from '@/components/projects/EditProjectDialog';
+import { ManageCampaignsDialog } from '@/components/projects/ManageCampaignsDialog';
 import {
   EYEBROW,
   METHOD_LABEL,
@@ -19,7 +20,7 @@ import {
   qualityColor,
 } from '@/lib/design';
 
-const COLS = 'minmax(150px,2fr) 96px 104px minmax(140px,1.4fr) 70px 64px 94px';
+const COLS = '32px minmax(150px,2fr) 96px 104px minmax(140px,1.4fr) 70px 64px 94px';
 
 type ProjectTab = 'runs' | 'resources' | 'people' | 'about';
 
@@ -144,6 +145,9 @@ export const ProjectsPage: React.FC = () => {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [runHoverId, setRunHoverId] = useState<number | null>(null);
   const [sectionHover, setSectionHover] = useState<string | null>(null);
+  const [manageCampaignsOpen, setManageCampaignsOpen] = useState(false);
+  const [selectedRunIds, setSelectedRunIds] = useState<Set<number>>(new Set());
+  const [movingRuns, setMovingRuns] = useState(false);
 
   // Returning from a run: land on the project it came from.
   React.useEffect(() => {
@@ -199,11 +203,59 @@ export const ProjectsPage: React.FC = () => {
     staleTime: 60_000,
   });
 
-  // A new project starts unfiltered.
+  // A new project starts unfiltered and clears selections.
   React.useEffect(() => {
     setRunSearch('');
     setCampaign('all');
+    setSelectedRunIds(new Set());
   }, [active?.id]);
+
+  // If the active campaign filter is deleted, reset to 'all'.
+  React.useEffect(() => {
+    if (typeof campaign === 'number') {
+      const groups = (groupsQuery.data ?? []) as RunGroup[];
+      if (groups.length > 0 && !groups.some((g) => g.id === campaign)) {
+        setCampaign('all');
+      }
+    }
+  }, [campaign, groupsQuery.data]);
+
+  const moveRuns = async (runIds: number[], targetGroupId: number | null) => {
+    if (runIds.length === 0 || movingRuns) return;
+    setMovingRuns(true);
+    try {
+      await Promise.all(runIds.map((id) => apiClient.setRunGroup(id, targetGroupId)));
+      await queryClient.invalidateQueries({ queryKey: ['runs', 'projects'] });
+      await queryClient.invalidateQueries({ queryKey: ['project-groups', active?.id] });
+      setSelectedRunIds(new Set());
+    } catch (err) {
+      console.error('Failed to move runs:', err);
+    } finally {
+      setMovingRuns(false);
+    }
+  };
+
+  const toggleRunSelect = (runId: number) => {
+    setSelectedRunIds((current) => {
+      const next = new Set(current);
+      if (next.has(runId)) next.delete(runId);
+      else next.add(runId);
+      return next;
+    });
+  };
+
+  const toggleSectionSelect = (sectionRuns: ProjectRun[]) => {
+    setSelectedRunIds((current) => {
+      const next = new Set(current);
+      const allSelected = sectionRuns.length > 0 && sectionRuns.every((r) => next.has(r.id));
+      if (allSelected) {
+        sectionRuns.forEach((r) => next.delete(r.id));
+      } else {
+        sectionRuns.forEach((r) => next.add(r.id));
+      }
+      return next;
+    });
+  };
 
   const runView = useMemo(() => {
     const groups = [...((groupsQuery.data ?? []) as RunGroup[])].sort(
@@ -269,6 +321,22 @@ export const ProjectsPage: React.FC = () => {
     const shown = visible.reduce((sum, section) => sum + section.runs.length, 0);
     return { sections, visible, hasCampaigns, searchedCount: searched.length, shown };
   }, [activeRuns, groupsQuery.data, tagsQuery.data, needle, newestFirst, campaign]);
+
+  const shownRuns = useMemo(() => runView.visible.flatMap((s) => s.runs), [runView.visible]);
+  const allShownSelected = shownRuns.length > 0 && shownRuns.every((r) => selectedRunIds.has(r.id));
+  const someShownSelected = shownRuns.some((r) => selectedRunIds.has(r.id)) && !allShownSelected;
+
+  const toggleSelectAllShown = () => {
+    setSelectedRunIds((current) => {
+      const next = new Set(current);
+      if (allShownSelected) {
+        shownRuns.forEach((r) => next.delete(r.id));
+      } else {
+        shownRuns.forEach((r) => next.add(r.id));
+      }
+      return next;
+    });
+  };
 
   React.useEffect(() => {
     if (!active) {
@@ -403,6 +471,17 @@ export const ProjectsPage: React.FC = () => {
         {narrow ? (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <input
+                type="checkbox"
+                checked={selectedRunIds.has(run.id)}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  toggleRunSelect(run.id);
+                }}
+                onClick={(e) => e.stopPropagation()}
+                aria-label={`Select run ${run.run_name}`}
+                style={{ cursor: 'pointer', margin: 0, flex: 'none' }}
+              />
               <span style={{ flex: 1, minWidth: 0, fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 500, color: hovered ? '#fff' : 'var(--fg-link)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {run.run_name}
               </span>
@@ -421,7 +500,19 @@ export const ProjectsPage: React.FC = () => {
           </>
         ) : (
           <>
-            <div style={{ padding: '9px 16px', minWidth: 0 }}>
+            <div
+              style={{ padding: '0 0 0 16px', display: 'flex', alignItems: 'center' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <input
+                type="checkbox"
+                checked={selectedRunIds.has(run.id)}
+                onChange={() => toggleRunSelect(run.id)}
+                aria-label={`Select run ${run.run_name}`}
+                style={{ cursor: 'pointer', margin: 0 }}
+              />
+            </div>
+            <div style={{ padding: '9px 12px', minWidth: 0 }}>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 500, color: hovered ? '#fff' : 'var(--fg-link)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {run.run_name}
               </div>
@@ -446,10 +537,12 @@ export const ProjectsPage: React.FC = () => {
     const isCollapsed = !!collapsed[collapseKey];
     const hovered = sectionHover === section.key;
     const descId = `campaign-desc-${section.key}`;
+    const allSectionSelected = section.runs.length > 0 && section.runs.every((r) => selectedRunIds.has(r.id));
+    const someSectionSelected = section.runs.some((r) => selectedRunIds.has(r.id)) && !allSectionSelected;
+
     return (
       <section key={section.key} aria-label={section.name}>
-        <button
-          type="button"
+        <div
           data-campaign={section.name}
           data-count={section.runs.length}
           aria-expanded={!isCollapsed}
@@ -458,19 +551,34 @@ export const ProjectsPage: React.FC = () => {
           onMouseEnter={() => setSectionHover(section.key)}
           onMouseLeave={() => setSectionHover(null)}
           style={{
-            all: 'unset',
             boxSizing: 'border-box',
             cursor: 'pointer',
             width: '100%',
             display: 'flex',
-            alignItems: 'flex-start',
+            alignItems: 'center',
             gap: 8,
             padding: narrow ? '10px 16px' : '9px 16px',
             minHeight: narrow ? 44 : undefined,
             background: hovered ? 'var(--bg-hover)' : 'var(--bg-canvas)',
             borderBottom: '1px solid var(--border-default)',
+            userSelect: 'none',
           }}
         >
+          <input
+            type="checkbox"
+            checked={allSectionSelected}
+            ref={(el) => {
+              if (el) el.indeterminate = someSectionSelected;
+            }}
+            onChange={(e) => {
+              e.stopPropagation();
+              toggleSectionSelect(section.runs);
+            }}
+            onClick={(e) => e.stopPropagation()}
+            title={`Select all runs in ${section.name}`}
+            aria-label={`Select all runs in ${section.name}`}
+            style={{ cursor: 'pointer', margin: 0, flex: 'none' }}
+          />
           <svg
             width="14"
             height="14"
@@ -480,7 +588,7 @@ export const ProjectsPage: React.FC = () => {
             strokeWidth="1.5"
             strokeLinecap="round"
             strokeLinejoin="round"
-            style={{ flex: 'none', marginTop: 2, transform: isCollapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 120ms' }}
+            style={{ flex: 'none', transform: isCollapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 120ms' }}
           >
             <path d="m6 9 6 6 6-6" />
           </svg>
@@ -513,7 +621,7 @@ export const ProjectsPage: React.FC = () => {
               </span>
             )}
           </span>
-        </button>
+        </div>
         {!isCollapsed && section.runs.map(renderRunRow)}
         {!isCollapsed && section.runs.length === 0 && (
           <div style={{ padding: '10px 16px 10px 38px', fontSize: 12, color: 'var(--fg-muted)', borderBottom: '1px solid var(--border-subtle)' }}>
@@ -848,12 +956,21 @@ export const ProjectsPage: React.FC = () => {
                       <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-default)' }}>{newestFirst ? '↓' : '↑'}</span>
                     </button>
                   </div>
-                  {chips.length > 0 && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 8,
+                      flexWrap: narrow ? 'nowrap' : 'wrap',
+                    }}
+                  >
                     <div
                       role="group"
                       aria-label="Campaign"
                       style={{
                         display: 'flex',
+                        alignItems: 'center',
                         gap: 6,
                         flexWrap: narrow ? 'nowrap' : 'wrap',
                         overflowX: narrow ? 'auto' : undefined,
@@ -878,6 +995,94 @@ export const ProjectsPage: React.FC = () => {
                           </button>
                         );
                       })}
+                      <button
+                        type="button"
+                        onClick={() => setManageCampaignsOpen(true)}
+                        title="Manage campaigns"
+                        style={{
+                          ...chipStyle(false),
+                          height: narrow ? 32 : 28,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 5,
+                          color: 'var(--fg-muted)',
+                        }}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 20h9" />
+                          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                        </svg>
+                        <span>Manage campaigns</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {selectedRunIds.size > 0 && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 12,
+                        padding: '6px 10px',
+                        background: 'var(--bg-sunken)',
+                        border: '1px solid var(--border-default)',
+                        borderRadius: 4,
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--fg-default)' }}>
+                          {selectedRunIds.size} {selectedRunIds.size === 1 ? 'run' : 'runs'} selected
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedRunIds(new Set())}
+                          style={{
+                            all: 'unset',
+                            cursor: 'pointer',
+                            color: 'var(--fg-muted)',
+                            fontSize: 12,
+                            textDecoration: 'underline',
+                          }}
+                        >
+                          Deselect all
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>Move to:</span>
+                        <select
+                          disabled={movingRuns}
+                          value=""
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (!val) return;
+                            const targetGroupId = val === 'none' ? null : Number(val);
+                            moveRuns(Array.from(selectedRunIds), targetGroupId);
+                          }}
+                          style={{
+                            padding: '3px 8px',
+                            fontSize: 12,
+                            fontFamily: 'var(--font-mono)',
+                            borderRadius: 4,
+                            border: '1px solid var(--border-default)',
+                            background: 'var(--bg-surface)',
+                            color: 'var(--fg-default)',
+                            cursor: movingRuns ? 'wait' : 'pointer',
+                          }}
+                        >
+                          <option value="" disabled>Select campaign…</option>
+                          {((groupsQuery.data ?? []) as RunGroup[]).map((g) => (
+                            <option key={g.id} value={g.id}>{g.name}</option>
+                          ))}
+                          <option value="none">Ungrouped</option>
+                        </select>
+                        {movingRuns && (
+                          <span style={{ fontSize: 12, color: 'var(--fg-muted)', fontFamily: 'var(--font-mono)' }}>
+                            Moving…
+                          </span>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -888,8 +1093,21 @@ export const ProjectsPage: React.FC = () => {
                   <>
                     {!narrow && activeRuns.length > 0 && runView.shown > 0 && (
                       <div style={{ display: 'grid', gridTemplateColumns: COLS, background: 'var(--bg-sunken)', borderBottom: '1px solid var(--border-default)', position: 'sticky', top: 0, zIndex: 1 }}>
+                        <div style={{ padding: '8px 0 8px 16px', display: 'flex', alignItems: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={allShownSelected}
+                            ref={(el) => {
+                              if (el) el.indeterminate = someShownSelected;
+                            }}
+                            onChange={toggleSelectAllShown}
+                            aria-label="Select all shown runs"
+                            title="Select all shown runs"
+                            style={{ cursor: 'pointer', margin: 0 }}
+                          />
+                        </div>
                         {['Run', 'Engine', 'Method', 'Conditions', 'Length', 'Atoms', 'Quality'].map((label, index) => (
-                          <span key={label} style={{ ...EYEBROW, padding: '8px 12px', paddingLeft: index === 0 ? 16 : 12, textAlign: index >= 4 ? 'right' : 'left' }}>
+                          <span key={label} style={{ ...EYEBROW, padding: '8px 12px', textAlign: index >= 4 ? 'right' : 'left' }}>
                             {label}
                           </span>
                         ))}
@@ -1123,6 +1341,19 @@ export const ProjectsPage: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {manageCampaignsOpen && active && (
+        <ManageCampaignsDialog
+          project={active}
+          groups={(groupsQuery.data ?? []) as RunGroup[]}
+          runs={activeRuns}
+          onClose={() => setManageCampaignsOpen(false)}
+          onRefresh={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['project-groups', active.id] });
+            await queryClient.invalidateQueries({ queryKey: ['runs', 'projects'] });
+          }}
+        />
       )}
     </main>
   );
