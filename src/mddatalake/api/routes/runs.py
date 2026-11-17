@@ -25,7 +25,7 @@ from mddatalake.core.enums import (
     SimulationMethodType,
     ThermostatType,
 )
-from mddatalake.db.models import Artifact, SimulationRun, Tag
+from mddatalake.db.models import Artifact, Project, SimulationRun, Tag
 from mddatalake.db.models.run_group import RunGroup
 from mddatalake.db.session import get_db
 from mddatalake.storage import FilesystemBackend, get_storage_backend
@@ -1069,3 +1069,74 @@ async def assign_run_group(
     run.group_id = payload.group_id
     await db.commit()
     return {"run_id": run_id, "group_id": run.group_id}
+
+
+class RunPlacement(BaseModel):
+    """Where a run belongs: its project and, inside it, its campaign."""
+
+    project_id: int | None = None
+    group_id: int | None = None
+
+
+@router.patch("/runs/{run_id}/placement")
+async def place_run(
+    run_id: int, payload: RunPlacement, db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Move a run to another project, and to a campaign inside it.
+
+    A campaign only means something inside its own project, so moving a run to
+    a different project drops a campaign that does not belong there unless the
+    same request names one.
+    """
+    run = (
+        await db.execute(
+            select(SimulationRun)
+            .options(selectinload(SimulationRun.group))
+            .where(SimulationRun.id == run_id)
+        )
+    ).scalar_one_or_none()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    provided = payload.model_fields_set
+    target_project_id = run.project_id
+
+    if "project_id" in provided:
+        if payload.project_id is None:
+            raise HTTPException(
+                status_code=422, detail="A run must belong to a project"
+            )
+        project = (
+            await db.execute(select(Project).where(Project.id == payload.project_id))
+        ).scalar_one_or_none()
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        target_project_id = project.id
+
+    if "group_id" in provided:
+        target_group_id = payload.group_id
+    else:
+        # No campaign named: keep the current one only if it travels with the run.
+        target_group_id = run.group_id
+        if run.group is not None and run.group.project_id != target_project_id:
+            target_group_id = None
+
+    if target_group_id is not None:
+        group = (
+            await db.execute(select(RunGroup).where(RunGroup.id == target_group_id))
+        ).scalar_one_or_none()
+        if not group:
+            raise HTTPException(status_code=404, detail="Campaign not found")
+        if group.project_id != target_project_id:
+            raise HTTPException(
+                status_code=422, detail="Campaign belongs to a different project"
+            )
+
+    run.project_id = target_project_id
+    run.group_id = target_group_id
+    await db.commit()
+    return {
+        "run_id": run_id,
+        "project_id": run.project_id,
+        "group_id": run.group_id,
+    }

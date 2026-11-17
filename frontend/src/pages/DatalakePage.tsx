@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useIsNarrow } from '@/hooks/useIsNarrow';
+import { ResizeHandle, useResizableColumns } from '@/hooks/useResizableColumns';
+import { EditRunDialog } from '@/components/browser/EditRunDialog';
 import { MobileDatalake } from '@/pages/MobileDatalake';
 import apiClient from '@/services/api';
-import type { SimulationRun } from '@/types/visualization';
+import type { RunUpdate, SimulationRun } from '@/types/visualization';
 import {
   EYEBROW,
   METHOD_COLOR,
@@ -38,7 +40,11 @@ const GROUP_BY_OPTIONS: { id: GroupBy; label: string }[] = [
 ];
 
 const COLS =
-  'minmax(170px,2fr) minmax(110px,1.1fr) 112px 118px minmax(150px,1.5fr) 74px 66px 104px 100px 32px';
+  'minmax(170px,2fr) minmax(110px,1.1fr) 112px 118px minmax(150px,1.5fr) 74px 66px 104px 100px 44px';
+
+const COLUMN_LABELS = [
+  'Run', 'Project', 'Engine', 'Method', 'Conditions', 'Length', 'Atoms', 'Quality', 'Uploaded', '',
+];
 
 const ENGINE_BUCKETS = ['LAMMPS', 'GROMACS', 'AREPAS', 'Other'] as const;
 
@@ -114,6 +120,15 @@ export const DatalakePage: React.FC = () => {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [hoverId, setHoverId] = useState<number | null>(null);
   const [newestFirst, setNewestFirst] = useState(true);
+  const [editingRun, setEditingRun] = useState<SimulationRun | null>(null);
+
+  // Columns are draggable; the widths survive a reload.
+  const { template, headerRef, beginResize, reset } = useResizableColumns(
+    'tessera.datalake.columns',
+    COLS,
+    COLUMN_LABELS.length
+  );
+  const queryClient = useQueryClient();
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['runs', 'datalake'],
@@ -230,7 +245,7 @@ export const DatalakePage: React.FC = () => {
         onMouseLeave={() => setHoverId(null)}
         style={{
           display: 'grid',
-          gridTemplateColumns: COLS,
+          gridTemplateColumns: template,
           alignItems: 'center',
           cursor: 'pointer',
           lineHeight: 1.3,
@@ -286,7 +301,37 @@ export const DatalakePage: React.FC = () => {
         <div style={{ padding: '0 12px', fontFamily: 'var(--font-mono)', fontSize: 12, color: muted, whiteSpace: 'nowrap' }}>
           {fmtDate(run.created_at)}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: muted }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, color: muted }}>
+          <button
+            type="button"
+            aria-label={`Edit run ${run.run_name}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              setEditingRun(run as SimulationRun);
+            }}
+            onMouseEnter={() => setHoverId(null)}
+            title="Edit project, campaign and labels"
+            style={{
+              all: 'unset',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 20,
+              height: 20,
+              borderRadius: 3,
+              color: hovered ? '#fff' : 'var(--fg-muted)',
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path
+                d="M9.6 1.9a1.4 1.4 0 0 1 2 2L4.4 11.1l-2.7.6.6-2.7 7.3-7.1Z"
+                stroke="currentColor"
+                strokeWidth="1.2"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
           <Chevron />
         </div>
       </div>
@@ -664,14 +709,15 @@ export const DatalakePage: React.FC = () => {
 
             {!isLoading && !error && view === 'table' && (
               <>
-                <div style={{ display: 'grid', gridTemplateColumns: COLS, background: 'var(--bg-sunken)', borderBottom: '1px solid var(--border-default)', position: 'sticky', top: 0, zIndex: 2 }}>
-                  {['Run', 'Project', 'Engine', 'Method', 'Conditions', 'Length', 'Atoms', 'Quality', 'Uploaded', ''].map((label, index) => (
+                <div ref={headerRef} style={{ display: 'grid', gridTemplateColumns: template, background: 'var(--bg-sunken)', borderBottom: '1px solid var(--border-default)', position: 'sticky', top: 0, zIndex: 2 }}>
+                  {COLUMN_LABELS.map((label, index) => (
                     <span
                       key={`${label}-${index}`}
                       onClick={label === 'Uploaded' ? () => setNewestFirst((v) => !v) : undefined}
                       title={label === 'Uploaded' ? 'Sort by upload date' : undefined}
                       style={{
                         ...EYEBROW,
+                        position: 'relative',
                         padding: '10px 12px',
                         paddingLeft: index === 0 ? 16 : 12,
                         textAlign: index === 5 || index === 6 ? 'right' : 'left',
@@ -684,6 +730,12 @@ export const DatalakePage: React.FC = () => {
                       {label === 'Uploaded' && (
                         <span style={{ marginLeft: 4 }}>{newestFirst ? '↓' : '↑'}</span>
                       )}
+                      {index < COLUMN_LABELS.length - 1 && (
+                        <ResizeHandle
+                          onPointerDown={beginResize(index)}
+                          onDoubleClick={reset}
+                        />
+                      )}
                     </span>
                   ))}
                 </div>
@@ -693,13 +745,14 @@ export const DatalakePage: React.FC = () => {
 
             {!isLoading && !error && view === 'grouped' && (
               <>
-                <div style={{ display: 'grid', gridTemplateColumns: COLS, background: 'var(--bg-sunken)', borderBottom: '1px solid var(--border-default)', position: 'sticky', top: 0, zIndex: 2 }}>
-                  {['Run', 'Project', 'Engine', 'Method', 'Conditions', 'Length', 'Atoms', 'Quality', 'Uploaded', ''].map((label, index) => (
+                <div ref={headerRef} style={{ display: 'grid', gridTemplateColumns: template, background: 'var(--bg-sunken)', borderBottom: '1px solid var(--border-default)', position: 'sticky', top: 0, zIndex: 2 }}>
+                  {COLUMN_LABELS.map((label, index) => (
                     <span
                       key={`g-${label}-${index}`}
                       onClick={label === 'Uploaded' ? () => setNewestFirst((v) => !v) : undefined}
                       style={{
                         ...EYEBROW,
+                        position: 'relative',
                         padding: '10px 12px',
                         paddingLeft: index === 0 ? 16 : 12,
                         textAlign: index === 5 || index === 6 ? 'right' : 'left',
@@ -710,6 +763,12 @@ export const DatalakePage: React.FC = () => {
                     >
                       {label}
                       {label === 'Uploaded' && <span style={{ marginLeft: 4 }}>{newestFirst ? '↓' : '↑'}</span>}
+                      {index < COLUMN_LABELS.length - 1 && (
+                        <ResizeHandle
+                          onPointerDown={beginResize(index)}
+                          onDoubleClick={reset}
+                        />
+                      )}
                     </span>
                   ))}
                 </div>
@@ -781,6 +840,21 @@ export const DatalakePage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {editingRun && (
+        <EditRunDialog
+          open={Boolean(editingRun)}
+          run={editingRun}
+          onClose={() => setEditingRun(null)}
+          onSave={async (data: RunUpdate) => {
+            await apiClient.updateRun(editingRun.id, data);
+          }}
+          onSaved={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['runs', 'datalake'] });
+            await queryClient.invalidateQueries({ queryKey: ['projects'] });
+          }}
+        />
+      )}
     </main>
   );
 };

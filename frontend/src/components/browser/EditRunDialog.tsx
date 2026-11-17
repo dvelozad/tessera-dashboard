@@ -15,7 +15,7 @@ import {
 } from '@mui/material';
 import { apiClient, type RunGroup } from '@/services/api';
 import { EYEBROW } from '@/lib/design';
-import type { RunUpdate, SimulationRun } from '@/types/visualization';
+import type { Project, RunUpdate, SimulationRun } from '@/types/visualization';
 
 interface EditRunDialogProps {
   open: boolean;
@@ -141,7 +141,10 @@ export const EditRunDialog: React.FC<EditRunDialogProps> = ({ open, run, onClose
   const [error, setError] = useState<string>('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  // Organisation: the campaign this run belongs to and its free-form labels.
+  // Organisation: the project and campaign this run belongs to, and its labels.
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectId, setProjectId] = useState<number | null>(null);
+  const [initialProjectId, setInitialProjectId] = useState<number | null>(null);
   const [groups, setGroups] = useState<RunGroup[]>([]);
   const [groupId, setGroupId] = useState<number | null>(null);
   const [initialGroupId, setInitialGroupId] = useState<number | null>(null);
@@ -173,6 +176,8 @@ export const EditRunDialog: React.FC<EditRunDialogProps> = ({ open, run, onClose
         setDescription(fresh.description || '');
         setGroupId(fresh.group_id ?? null);
         setInitialGroupId(fresh.group_id ?? null);
+        setProjectId(fresh.project_id ?? null);
+        setInitialProjectId(fresh.project_id ?? null);
         setLabels(fresh.tags ?? []);
         setInitialLabels(fresh.tags ?? []);
         // The campaigns offered are the ones of the run's own project.
@@ -190,6 +195,14 @@ export const EditRunDialog: React.FC<EditRunDialogProps> = ({ open, run, onClose
         }
       })
       .catch(() => undefined);
+    apiClient
+      .listProjects()
+      .then((loaded) => {
+        if (!cancelled) setProjects(loaded);
+      })
+      .catch(() => {
+        if (!cancelled) setProjects([]);
+      });
     setLabelDraft('');
     return () => {
       cancelled = true;
@@ -227,12 +240,28 @@ export const EditRunDialog: React.FC<EditRunDialogProps> = ({ open, run, onClose
 
   // Campaign and labels travel on their own endpoints, so they are applied
   // after the metadata patch and counted separately for "Save".
+  const projectChanged = projectId !== initialProjectId;
   const groupChanged = groupId !== initialGroupId;
   const labelsToAdd = labels.filter((label) => !initialLabels.includes(label));
   const labelsToRemove = initialLabels.filter((label) => !labels.includes(label));
   const organisationChanges =
-    (groupChanged ? 1 : 0) + labelsToAdd.length + labelsToRemove.length;
+    (projectChanged ? 1 : 0) +
+    (groupChanged ? 1 : 0) +
+    labelsToAdd.length +
+    labelsToRemove.length;
   const changeCount = metadataChanges + organisationChanges;
+
+  /** Changing the project offers that project's campaigns and drops the old one. */
+  const handleProjectChange = (nextId: number | null) => {
+    setProjectId(nextId);
+    setGroupId(null);
+    setGroups([]);
+    if (nextId === null) return;
+    apiClient
+      .listProjectGroups(nextId)
+      .then(setGroups)
+      .catch(() => setGroups([]));
+  };
 
   const handleSave = async () => {
     if (!runName.trim()) {
@@ -251,7 +280,16 @@ export const EditRunDialog: React.FC<EditRunDialogProps> = ({ open, run, onClose
 
     try {
       if (metadataChanges) await onSave(pending);
-      if (groupChanged) await apiClient.setRunGroup(run.id, groupId);
+      if (projectChanged) {
+        // One call carries both, because a campaign is only valid inside the
+        // project it belongs to.
+        await apiClient.setRunPlacement(run.id, {
+          project_id: projectId ?? undefined,
+          group_id: groupId,
+        });
+      } else if (groupChanged) {
+        await apiClient.setRunGroup(run.id, groupId);
+      }
       for (const label of labelsToAdd) await apiClient.addRunTag(run.id, label);
       for (const label of labelsToRemove) await apiClient.removeRunTag(run.id, label);
       await onSaved?.();
@@ -411,6 +449,28 @@ export const EditRunDialog: React.FC<EditRunDialogProps> = ({ open, run, onClose
 
           <Stack spacing={1.5}>
             <Box component="span" sx={EYEBROW}>Organisation</Box>
+            <TextField
+              select
+              label="Project"
+              fullWidth
+              size="small"
+              value={projectId === null ? '' : String(projectId)}
+              disabled={saving}
+              onChange={(e) => handleProjectChange(e.target.value === '' ? null : Number(e.target.value))}
+              helperText="Moving a run to another project clears its campaign unless you pick one there."
+              InputLabelProps={{ shrink: true }}
+            >
+              {projectId === null && (
+                <MenuItem value="">
+                  <span style={{ color: 'var(--fg-muted)' }}>No project</span>
+                </MenuItem>
+              )}
+              {projects.map((project) => (
+                <MenuItem key={project.id} value={String(project.id)} sx={{ fontSize: 13 }}>
+                  {project.name}
+                </MenuItem>
+              ))}
+            </TextField>
             <TextField
               select
               label="Campaign"

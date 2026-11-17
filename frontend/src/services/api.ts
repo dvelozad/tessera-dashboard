@@ -398,6 +398,15 @@ class APIClient {
     return response.data;
   }
 
+  /** Move a run to another project, and to a campaign inside it. */
+  async setRunPlacement(
+    runId: number,
+    placement: { project_id?: number; group_id?: number | null }
+  ): Promise<unknown> {
+    const response = await this.client.patch(`/runs/${runId}/placement`, placement);
+    return response.data;
+  }
+
   // Run labels
   async listRunTags(runId: number): Promise<string[]> {
     const response = await this.client.get(`/runs/${runId}/tags`);

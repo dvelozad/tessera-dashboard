@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useIsNarrow } from '@/hooks/useIsNarrow';
+import { ResizeHandle, useResizableColumns } from '@/hooks/useResizableColumns';
 import apiClient, { type RunGroup } from '@/services/api';
 import type { Project, ProjectLink, SimulationRun } from '@/types/visualization';
 import { EditProjectDialog } from '@/components/projects/EditProjectDialog';
@@ -137,6 +138,13 @@ export const ProjectsPage: React.FC = () => {
   const [hoverId, setHoverId] = useState<number | null>(null);
   const [editing, setEditing] = useState<Project | null>(null);
   const [editingRun, setEditingRun] = useState<ProjectRun | null>(null);
+  // Run-table columns are draggable; widths persist per browser.
+  const {
+    template: runTableTemplate,
+    headerRef: runHeaderRef,
+    beginResize: beginColumnResize,
+    reset: resetColumnWidths,
+  } = useResizableColumns('tessera.projects.columns', COLS, 8);
   const [links, setLinks] = useState<ProjectLink[]>([]);
   const [linkLabel, setLinkLabel] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
@@ -475,7 +483,7 @@ export const ProjectsPage: React.FC = () => {
         style={{
           ...(narrow
             ? { display: 'flex', flexDirection: 'column', gap: 4, padding: '10px 16px' }
-            : { display: 'grid', gridTemplateColumns: COLS, alignItems: 'center' }),
+            : { display: 'grid', gridTemplateColumns: runTableTemplate, alignItems: 'center' }),
           cursor: 'pointer',
           borderBottom: `1px solid ${hovered ? 'rgba(255,255,255,0.15)' : 'var(--border-subtle)'}`,
           background: hovered ? 'var(--primary-500)' : 'transparent',
@@ -1160,7 +1168,7 @@ export const ProjectsPage: React.FC = () => {
                 {tab === 'runs' && (
                   <>
                     {!narrow && activeRuns.length > 0 && runView.shown > 0 && (
-                      <div style={{ display: 'grid', gridTemplateColumns: COLS, background: 'var(--bg-sunken)', borderBottom: '1px solid var(--border-default)', position: 'sticky', top: 0, zIndex: 1 }}>
+                      <div ref={runHeaderRef} style={{ display: 'grid', gridTemplateColumns: runTableTemplate, background: 'var(--bg-sunken)', borderBottom: '1px solid var(--border-default)', position: 'sticky', top: 0, zIndex: 1 }}>
                         <div style={{ padding: '8px 0 8px 16px', display: 'flex', alignItems: 'center' }}>
                           <input
                             type="checkbox"
@@ -1175,8 +1183,22 @@ export const ProjectsPage: React.FC = () => {
                           />
                         </div>
                         {['Run', 'Engine', 'Method', 'Conditions', 'Length', 'Atoms', 'Quality'].map((label, index) => (
-                          <span key={label} style={{ ...EYEBROW, padding: '8px 12px', textAlign: index >= 4 ? 'right' : 'left' }}>
+                          <span
+                            key={label}
+                            style={{
+                              ...EYEBROW,
+                              position: 'relative',
+                              padding: '8px 12px',
+                              textAlign: index >= 4 ? 'right' : 'left',
+                            }}
+                          >
                             {label}
+                            {index < 6 && (
+                              <ResizeHandle
+                                onPointerDown={beginColumnResize(index + 1)}
+                                onDoubleClick={resetColumnWidths}
+                              />
+                            )}
                           </span>
                         ))}
                       </div>
