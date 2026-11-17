@@ -107,6 +107,22 @@ export const RunDetailPage: React.FC = () => {
     });
   };
 
+  // The edit dialog also writes labels and the campaign on their own
+  // endpoints, so re-read the run once it has finished.
+  const refreshRun = async () => {
+    if (!runId) return;
+    try {
+      const [fresh, tags] = await Promise.all([
+        apiClient.getRun(parseInt(runId)),
+        apiClient.listRunTags(parseInt(runId)),
+      ]);
+      setRun(fresh);
+      setLabels(tags);
+    } catch {
+      /* the save already succeeded; a stale label list is not fatal */
+    }
+  };
+
   const handleDelete = async () => {
     if (!runId) return;
 
@@ -535,6 +551,7 @@ export const RunDetailPage: React.FC = () => {
         run={run}
         onClose={() => setEditDialogOpen(false)}
         onSave={handleEditSave}
+        onSaved={refreshRun}
       />
 
       <DeleteConfirmDialog

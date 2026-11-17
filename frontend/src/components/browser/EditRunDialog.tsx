@@ -13,7 +13,7 @@ import {
   InputAdornment,
   useMediaQuery,
 } from '@mui/material';
-import { apiClient } from '@/services/api';
+import { apiClient, type RunGroup } from '@/services/api';
 import { EYEBROW } from '@/lib/design';
 import type { RunUpdate, SimulationRun } from '@/types/visualization';
 
@@ -22,6 +22,8 @@ interface EditRunDialogProps {
   run: SimulationRun | null;
   onClose: () => void;
   onSave: (data: RunUpdate) => Promise<void>;
+  /** Called once everything (metadata, campaign, labels) has been written. */
+  onSaved?: () => void | Promise<void>;
 }
 
 type FieldKey = Exclude<keyof RunUpdate, 'run_name' | 'description'>;
@@ -129,7 +131,7 @@ const parseApiError = (err: any): { form: string; fields: Record<string, string>
   return { form, fields };
 };
 
-export const EditRunDialog: React.FC<EditRunDialogProps> = ({ open, run, onClose, onSave }) => {
+export const EditRunDialog: React.FC<EditRunDialogProps> = ({ open, run, onClose, onSave, onSaved }) => {
   const phone = useMediaQuery('(max-width:599px)');
   const [runName, setRunName] = useState('');
   const [description, setDescription] = useState('');
@@ -138,6 +140,14 @@ export const EditRunDialog: React.FC<EditRunDialogProps> = ({ open, run, onClose
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  // Organisation: the campaign this run belongs to and its free-form labels.
+  const [groups, setGroups] = useState<RunGroup[]>([]);
+  const [groupId, setGroupId] = useState<number | null>(null);
+  const [initialGroupId, setInitialGroupId] = useState<number | null>(null);
+  const [labels, setLabels] = useState<string[]>([]);
+  const [initialLabels, setInitialLabels] = useState<string[]>([]);
+  const [labelDraft, setLabelDraft] = useState('');
 
   useEffect(() => {
     if (run) {
@@ -161,8 +171,26 @@ export const EditRunDialog: React.FC<EditRunDialogProps> = ({ open, run, onClose
         setCurrent(fresh);
         setRunName(fresh.run_name || '');
         setDescription(fresh.description || '');
+        setGroupId(fresh.group_id ?? null);
+        setInitialGroupId(fresh.group_id ?? null);
+        setLabels(fresh.tags ?? []);
+        setInitialLabels(fresh.tags ?? []);
+        // The campaigns offered are the ones of the run's own project.
+        if (fresh.project_id) {
+          apiClient
+            .listProjectGroups(fresh.project_id)
+            .then((loaded) => {
+              if (!cancelled) setGroups(loaded);
+            })
+            .catch(() => {
+              if (!cancelled) setGroups([]);
+            });
+        } else {
+          setGroups([]);
+        }
       })
       .catch(() => undefined);
+    setLabelDraft('');
     return () => {
       cancelled = true;
     };
@@ -195,7 +223,16 @@ export const EditRunDialog: React.FC<EditRunDialogProps> = ({ open, run, onClose
   };
 
   const { patch: pending, invalid: pendingInvalid } = buildPatch();
-  const changeCount = Object.keys(pending).length;
+  const metadataChanges = Object.keys(pending).length;
+
+  // Campaign and labels travel on their own endpoints, so they are applied
+  // after the metadata patch and counted separately for "Save".
+  const groupChanged = groupId !== initialGroupId;
+  const labelsToAdd = labels.filter((label) => !initialLabels.includes(label));
+  const labelsToRemove = initialLabels.filter((label) => !labels.includes(label));
+  const organisationChanges =
+    (groupChanged ? 1 : 0) + labelsToAdd.length + labelsToRemove.length;
+  const changeCount = metadataChanges + organisationChanges;
 
   const handleSave = async () => {
     if (!runName.trim()) {
@@ -206,14 +243,18 @@ export const EditRunDialog: React.FC<EditRunDialogProps> = ({ open, run, onClose
       setFieldErrors(pendingInvalid);
       return;
     }
-    if (!changeCount) return;
+    if (!changeCount || !run) return;
 
     setSaving(true);
     setError('');
     setFieldErrors({});
 
     try {
-      await onSave(pending);
+      if (metadataChanges) await onSave(pending);
+      if (groupChanged) await apiClient.setRunGroup(run.id, groupId);
+      for (const label of labelsToAdd) await apiClient.addRunTag(run.id, label);
+      for (const label of labelsToRemove) await apiClient.removeRunTag(run.id, label);
+      await onSaved?.();
       onClose();
     } catch (err: any) {
       const parsed = parseApiError(err);
@@ -367,6 +408,125 @@ export const EditRunDialog: React.FC<EditRunDialogProps> = ({ open, run, onClose
               </Box>
             </Stack>
           ))}
+
+          <Stack spacing={1.5}>
+            <Box component="span" sx={EYEBROW}>Organisation</Box>
+            <TextField
+              select
+              label="Campaign"
+              fullWidth
+              size="small"
+              value={groupId === null ? '' : String(groupId)}
+              disabled={saving}
+              onChange={(e) => setGroupId(e.target.value === '' ? null : Number(e.target.value))}
+              helperText={
+                groups.length
+                  ? 'A campaign is a named sub-division of the project.'
+                  : 'This run has no project, so there are no campaigns to choose from.'
+              }
+              InputLabelProps={{ shrink: true }}
+            >
+              <MenuItem value="">
+                <span style={{ color: 'var(--fg-muted)' }}>Ungrouped</span>
+              </MenuItem>
+              {groups.map((group) => (
+                <MenuItem key={group.id} value={String(group.id)} sx={{ fontSize: 13 }}>
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      width: 8,
+                      height: 8,
+                      borderRadius: 2,
+                      marginRight: 8,
+                      background: group.color || 'var(--border-strong)',
+                    }}
+                  />
+                  {group.name}
+                </MenuItem>
+              ))}
+            </TextField>
+
+            <Box>
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 0.75,
+                  alignItems: 'center',
+                  minHeight: 32,
+                }}
+              >
+                {labels.length === 0 && (
+                  <Box component="span" sx={{ fontSize: 12, color: 'var(--fg-muted)' }}>
+                    No labels yet.
+                  </Box>
+                )}
+                {labels.map((label) => (
+                  <Box
+                    key={label}
+                    component="span"
+                    sx={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 0.75,
+                      border: '1px solid var(--border-default)',
+                      borderRadius: '999px',
+                      padding: '2px 8px 2px 10px',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 11,
+                      background: 'var(--bg-sunken)',
+                    }}
+                  >
+                    {label}
+                    <Box
+                      component="button"
+                      type="button"
+                      aria-label={`Remove label ${label}`}
+                      disabled={saving}
+                      onClick={() => setLabels((prev) => prev.filter((item) => item !== label))}
+                      sx={{
+                        all: 'unset',
+                        cursor: 'pointer',
+                        lineHeight: 1,
+                        opacity: 0.6,
+                        '&:hover': { opacity: 1 },
+                      }}
+                    >
+                      ×
+                    </Box>
+                  </Box>
+                ))}
+              </Box>
+              <Box
+                component="form"
+                onSubmit={(event: React.FormEvent) => {
+                  event.preventDefault();
+                  const label = labelDraft.trim();
+                  if (!label) return;
+                  setLabels((prev) =>
+                    prev.some((item) => item.toLowerCase() === label.toLowerCase())
+                      ? prev
+                      : [...prev, label]
+                  );
+                  setLabelDraft('');
+                }}
+                sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 1 }}
+              >
+                <TextField
+                  size="small"
+                  value={labelDraft}
+                  disabled={saving}
+                  onChange={(e) => setLabelDraft(e.target.value)}
+                  placeholder="Add a label (e.g. validated, needs-review)"
+                  inputProps={{ style: { fontFamily: 'var(--font-mono)', fontSize: 12 } }}
+                  sx={{ flex: 1 }}
+                />
+                <Button type="submit" size="small" disabled={saving || !labelDraft.trim()}>
+                  Add label
+                </Button>
+              </Box>
+            </Box>
+          </Stack>
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 1.5 }}>

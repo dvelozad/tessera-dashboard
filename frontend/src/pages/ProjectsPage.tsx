@@ -5,6 +5,7 @@ import { useIsNarrow } from '@/hooks/useIsNarrow';
 import apiClient, { type RunGroup } from '@/services/api';
 import type { Project, ProjectLink, SimulationRun } from '@/types/visualization';
 import { EditProjectDialog } from '@/components/projects/EditProjectDialog';
+import { EditRunDialog } from '@/components/browser/EditRunDialog';
 import { ManageCampaignsDialog } from '@/components/projects/ManageCampaignsDialog';
 import {
   EYEBROW,
@@ -135,6 +136,7 @@ export const ProjectsPage: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [hoverId, setHoverId] = useState<number | null>(null);
   const [editing, setEditing] = useState<Project | null>(null);
+  const [editingRun, setEditingRun] = useState<ProjectRun | null>(null);
   const [links, setLinks] = useState<ProjectLink[]>([]);
   const [linkLabel, setLinkLabel] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
@@ -189,19 +191,6 @@ export const ProjectsPage: React.FC = () => {
   });
 
   const needle = runSearch.trim().toLowerCase();
-  const activeRunIds = activeRuns.map((run) => run.id).join(',');
-  // The run list carries no tags, so they are fetched per run, and only once the user searches.
-  const tagsQuery = useQuery({
-    queryKey: ['project-run-tags', active?.id, activeRunIds],
-    queryFn: async () => {
-      const entries = await Promise.all(
-        activeRuns.map(async (run) => [run.id, await apiClient.listRunTags(run.id).catch(() => [])] as const)
-      );
-      return Object.fromEntries(entries) as Record<number, string[]>;
-    },
-    enabled: !!active && needle.length > 0 && activeRuns.length > 0,
-    staleTime: 60_000,
-  });
 
   // A new project starts unfiltered and clears selections.
   React.useEffect(() => {
@@ -261,7 +250,6 @@ export const ProjectsPage: React.FC = () => {
     const groups = [...((groupsQuery.data ?? []) as RunGroup[])].sort(
       (a, b) => a.position - b.position || a.name.localeCompare(b.name)
     );
-    const tags = tagsQuery.data ?? {};
     const time = (run: ProjectRun) => (run.created_at ? Date.parse(run.created_at) : NaN);
     const ordered = [...activeRuns].sort((a, b) => {
       const ta = time(a);
@@ -272,7 +260,7 @@ export const ProjectsPage: React.FC = () => {
     });
     const searched = needle
       ? ordered.filter((run) =>
-          [run.run_name, run.system?.composition, run.group_name, ...(tags[run.id] ?? [])]
+          [run.run_name, run.system?.composition, run.group_name, ...(run.tags ?? [])]
             .filter(Boolean)
             .join(' ')
             .toLowerCase()
@@ -320,7 +308,7 @@ export const ProjectsPage: React.FC = () => {
     });
     const shown = visible.reduce((sum, section) => sum + section.runs.length, 0);
     return { sections, visible, hasCampaigns, searchedCount: searched.length, shown };
-  }, [activeRuns, groupsQuery.data, tagsQuery.data, needle, newestFirst, campaign]);
+  }, [activeRuns, groupsQuery.data, needle, newestFirst, campaign]);
 
   const shownRuns = useMemo(() => runView.visible.flatMap((s) => s.runs), [runView.visible]);
   const allShownSelected = shownRuns.length > 0 && shownRuns.every((r) => selectedRunIds.has(r.id));
@@ -448,6 +436,34 @@ export const ProjectsPage: React.FC = () => {
       </>
     );
     const conditions = fmtConditions(run.ensemble, run.temperature_target, run.pressure_target) || '—';
+    const runLabels = run.tags ?? [];
+    const editButton = (
+      <button
+        type="button"
+        aria-label={`Edit run ${run.run_name}`}
+        onClick={(event) => {
+          // The row itself opens the run; editing is a separate intent.
+          event.stopPropagation();
+          setEditingRun(run);
+        }}
+        style={{
+          all: 'unset',
+          cursor: 'pointer',
+          flex: 'none',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 10,
+          fontWeight: 600,
+          textTransform: 'uppercase',
+          letterSpacing: '0.06em',
+          color: hovered ? '#fff' : 'var(--fg-link)',
+          border: `1px solid ${hovered ? 'rgba(255,255,255,0.6)' : 'var(--border-default)'}`,
+          borderRadius: 3,
+          padding: '1px 6px',
+        }}
+      >
+        Edit
+      </button>
+    );
     return (
       <div
         key={run.id}
@@ -487,11 +503,36 @@ export const ProjectsPage: React.FC = () => {
               </span>
               {engineTag}
               {methodPill}
+              {editButton}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: muted, minWidth: 0 }}>
               <span style={{ minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{conditions}</span>
               <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>{fmtLength(run.total_time)}</span>
             </div>
+            {runLabels.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, minWidth: 0 }}>
+                {runLabels.slice(0, 3).map((label) => (
+                  <span
+                    key={label}
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 10,
+                      padding: '1px 6px',
+                      borderRadius: 999,
+                      border: `1px solid ${hovered ? 'rgba(255,255,255,0.6)' : 'var(--border-default)'}`,
+                      color: hovered ? '#fff' : 'var(--fg-muted)',
+                    }}
+                  >
+                    {label}
+                  </span>
+                ))}
+                {runLabels.length > 3 && (
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: muted }}>
+                    +{runLabels.length - 3}
+                  </span>
+                )}
+              </div>
+            )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'var(--font-mono)', fontSize: 11, color: muted, minWidth: 0 }}>
               <span style={{ minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{run.system?.composition}</span>
               <span style={{ flex: 'none', whiteSpace: 'nowrap' }}>· {fmtAtoms(run.system?.n_atoms)}</span>
@@ -513,12 +554,39 @@ export const ProjectsPage: React.FC = () => {
               />
             </div>
             <div style={{ padding: '9px 12px', minWidth: 0 }}>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 500, color: hovered ? '#fff' : 'var(--fg-link)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {run.run_name}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                <div style={{ minWidth: 0, flex: '1 1 auto', fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 500, color: hovered ? '#fff' : 'var(--fg-link)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {run.run_name}
+                </div>
+                {editButton}
               </div>
               <div style={{ fontSize: 11, color: muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {run.system?.composition}
               </div>
+              {runLabels.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 3 }}>
+                  {runLabels.slice(0, 3).map((label) => (
+                    <span
+                      key={label}
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: 10,
+                        padding: '0 5px',
+                        borderRadius: 999,
+                        border: `1px solid ${hovered ? 'rgba(255,255,255,0.6)' : 'var(--border-default)'}`,
+                        color: hovered ? '#fff' : 'var(--fg-muted)',
+                      }}
+                    >
+                      {label}
+                    </span>
+                  ))}
+                  {runLabels.length > 3 && (
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: muted }}>
+                      +{runLabels.length - 3}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
             <div style={{ padding: '0 12px' }}>{engineTag}</div>
             <div style={{ padding: '0 12px' }}>{methodPill}</div>
@@ -1128,7 +1196,6 @@ export const ProjectsPage: React.FC = () => {
                             : needle
                               ? <>No runs match “{runSearch.trim()}”.</>
                               : <>No runs in <b style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-default)' }}>{campaignLabel}</b>.</>}
-                          {needle && tagsQuery.isFetching && ' Still loading tags…'}
                         </span>
                         <ActionButton
                           onClick={() => {
@@ -1300,6 +1367,21 @@ export const ProjectsPage: React.FC = () => {
             await queryClient.invalidateQueries({ queryKey: ['projects'] });
             await queryClient.invalidateQueries({ queryKey: ['runs', 'projects'] });
             setEditing(null);
+          }}
+        />
+      )}
+
+      {editingRun && (
+        <EditRunDialog
+          open={Boolean(editingRun)}
+          run={editingRun}
+          onClose={() => setEditingRun(null)}
+          onSave={async (data) => {
+            await apiClient.updateRun(editingRun.id, data);
+          }}
+          onSaved={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['runs'] });
+            await queryClient.invalidateQueries({ queryKey: ['runs', 'projects'] });
           }}
         />
       )}

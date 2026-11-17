@@ -222,6 +222,9 @@ async def list_runs(
     else:
         stmt = stmt.options(selectinload(SimulationRun.project), selectinload(SimulationRun.group))
 
+    # Labels are shown next to each run in the project view.
+    stmt = stmt.options(selectinload(SimulationRun.tags))
+
     # Get total count before pagination
     from sqlalchemy import func
     count_stmt = select(func.count()).select_from(stmt.alias())
@@ -250,6 +253,7 @@ async def list_runs(
                 "project_name": run.project.name if run.project else "Unknown",
                 "group_id": run.group_id,
                 "group_name": run.group.name if run.group else None,
+                "tags": sorted(t.tag_name for t in run.tags),
                 "ensemble": run.ensemble.value,
                 "simulation_method": run.simulation_method.value if run.simulation_method else None,
                 "particle_insertion": run.particle_insertion,
@@ -292,6 +296,11 @@ async def get_run(run_id: int, db: AsyncSession = Depends(get_db)) -> dict[str, 
     stmt = select(SimulationRun).options(
         selectinload(SimulationRun.engine),
         selectinload(SimulationRun.system),
+        # The edit dialog needs to know which project's campaigns to offer and
+        # which one this run belongs to.
+        selectinload(SimulationRun.project),
+        selectinload(SimulationRun.group),
+        selectinload(SimulationRun.tags),
     ).where(SimulationRun.id == run_id)
 
     result = await db.execute(stmt)
@@ -332,6 +341,11 @@ async def get_run(run_id: int, db: AsyncSession = Depends(get_db)) -> dict[str, 
             "composition": run.system.composition_description if run.system else "Unknown",
         },
         "created_at": run.created_at.isoformat() if run.created_at else None,
+        "project_id": run.project_id,
+        "project_name": run.project.name if run.project else None,
+        "group_id": run.group_id,
+        "group_name": run.group.name if run.group else None,
+        "tags": sorted(t.tag_name for t in run.tags),
         # Completeness fields
         "completeness_score": run.completeness_score,
         "missing_data": run.missing_data,

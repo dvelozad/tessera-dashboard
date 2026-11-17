@@ -110,6 +110,12 @@ export interface SimulationRun {
   coulomb_method?: string | null;
   cutoff_coulomb?: number | null;
   cutoff_vdw?: number | null;
+  // Organisation: the project and campaign a run belongs to, plus its labels.
+  project_id?: number | null;
+  project_name?: string | null;
+  group_id?: number | null;
+  group_name?: string | null;
+  tags?: string[];
 }
 
 /** Fields PATCH /runs/{id} accepts; anything else is rejected with 422. */
