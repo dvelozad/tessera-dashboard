@@ -15,7 +15,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from mddatalake.core.config import settings
-from mddatalake.core.enums import ArtifactType, EnsembleType
+from mddatalake.core.enums import (
+    ArtifactType,
+    BarostatType,
+    CoulombType,
+    EnsembleType,
+    IntegratorType,
+    LammpsAtomStyle,
+    SimulationMethodType,
+    ThermostatType,
+)
 from mddatalake.db.models import Artifact, SimulationRun, Tag
 from mddatalake.db.models.run_group import RunGroup
 from mddatalake.db.session import get_db
@@ -57,10 +66,31 @@ async def _materialize(storage: Any, storage_key: str, dest_dir: Path) -> Path:
 
 
 class UpdateRunRequest(BaseModel):
-    """Request model for updating a simulation run."""
+    """Fields an editor may correct by hand.
+
+    Everything here is metadata a parser can miss or misread; the values are
+    the record of what the run actually was, not derived state.
+    """
 
     run_name: str | None = None
     description: str | None = None
+
+    simulation_method: str | None = None   # ATOMISTIC | H_ADRESS | ...
+    ensemble: str | None = None            # NVE | NVT | NPT | ...
+    atom_style: str | None = None          # LAMMPS atom style
+    temperature_target: float | None = None
+    pressure_target: float | None = None
+    timestep: float | None = None
+    n_steps: int | None = None
+    total_time: float | None = None
+    integrator: str | None = None
+    thermostat: str | None = None
+    barostat: str | None = None
+    coulomb_method: str | None = None
+    cutoff_coulomb: float | None = None
+    cutoff_vdw: float | None = None
+    slurm_job_id: str | None = None
+    compute_node: str | None = None
 
     class Config:
         extra = "forbid"  # Don't allow extra fields
@@ -657,11 +687,51 @@ async def update_run(
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
 
-    # Update fields
-    if update_data.run_name is not None:
-        run.run_name = update_data.run_name
-    if update_data.description is not None:
-        run.description = update_data.description
+    # Update fields. Enumerated columns take their enum member; a bad value is
+    # a 422 rather than a 500.
+    simple = (
+        "run_name",
+        "description",
+        "temperature_target",
+        "pressure_target",
+        "timestep",
+        "n_steps",
+        "total_time",
+        "cutoff_coulomb",
+        "cutoff_vdw",
+        "slurm_job_id",
+        "compute_node",
+    )
+    for field in simple:
+        value = getattr(update_data, field)
+        if value is not None:
+            setattr(run, field, value)
+
+    enums = {
+        "simulation_method": SimulationMethodType,
+        "ensemble": EnsembleType,
+        "atom_style": LammpsAtomStyle,
+        "integrator": IntegratorType,
+        "thermostat": ThermostatType,
+        "barostat": BarostatType,
+        "coulomb_method": CoulombType,
+    }
+    for field, enum_class in enums.items():
+        value = getattr(update_data, field)
+        if value is None:
+            continue
+        try:
+            setattr(run, field, enum_class(value))
+        except ValueError:
+            # Values are stored lower-case; accept the upper-case spelling a
+            # form or a person would naturally type.
+            try:
+                setattr(run, field, enum_class(value.lower()))
+            except ValueError:
+                allowed = ", ".join(item.value for item in enum_class)
+                raise HTTPException(
+                    status_code=422, detail=f"{field} must be one of: {allowed}"
+                )
 
     # Commit changes
     await db.commit()
