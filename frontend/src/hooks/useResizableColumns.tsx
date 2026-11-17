@@ -109,38 +109,19 @@ export function useResizableColumns(
   return { template, headerRef, beginResize, reset, isCustom: Boolean(widths) };
 }
 
-/** A thin grab strip on a header cell's right edge. */
+/** A grab strip on a header cell's right edge; its guide line appears on hover. */
 export const ResizeHandle: React.FC<{
   onPointerDown: (event: React.PointerEvent) => void;
   onDoubleClick?: () => void;
-  accentColor?: string;
-}> = ({ onPointerDown, onDoubleClick, accentColor = 'var(--border-strong)' }) => (
+}> = ({ onPointerDown, onDoubleClick }) => (
   <span
     role="separator"
     aria-orientation="vertical"
+    className="tessera-col-resizer"
     onPointerDown={onPointerDown}
     onDoubleClick={onDoubleClick}
     title="Drag to resize · double-click to reset"
-    style={{
-      position: 'absolute',
-      top: 0,
-      right: -3,
-      bottom: 0,
-      width: 7,
-      cursor: 'col-resize',
-      touchAction: 'none',
-      zIndex: 3,
-      display: 'flex',
-      justifyContent: 'center',
-    }}
   >
-    <span
-      style={{
-        width: 1,
-        background: accentColor,
-        opacity: 0.55,
-        transition: 'opacity 120ms',
-      }}
-    />
+    <span className="tessera-col-resizer__line" />
   </span>
 );

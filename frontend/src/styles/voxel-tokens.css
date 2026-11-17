@@ -397,3 +397,34 @@ a:hover { color: var(--fg-link-hover); text-decoration-thickness: 2px; }
 hr { border: 0; border-top: 1px solid var(--divider); margin: var(--space-6) 0; }
 
 ::selection { background: var(--primary-200); color: var(--primary-900); }
+
+/* ── Draggable column edges ───────────────────────────────────────────────
+   No guide line at rest: the table reads as plain columns until the pointer
+   is on the header, and the band under the cursor is the only thing that
+   lights up. */
+.tessera-col-resizer {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  bottom: 0;
+  width: 9px;
+  display: flex;
+  justify-content: center;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 4;
+  background: transparent;
+}
+
+.tessera-col-resizer__line {
+  width: 2px;
+  border-radius: 1px;
+  background: var(--primary-500);
+  opacity: 0;
+  transition: opacity 140ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.tessera-col-resizer:hover .tessera-col-resizer__line,
+.tessera-col-resizer:active .tessera-col-resizer__line {
+  opacity: 0.6;
+}

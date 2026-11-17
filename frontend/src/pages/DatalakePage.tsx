@@ -195,7 +195,7 @@ export const DatalakePage: React.FC = () => {
   };
 
   const compact = density === 'compact';
-  const rowPad = compact ? '6px' : '10px';
+  const rowPad = compact ? '3px' : '6px';
   const rowFont = compact ? 12.5 : 13.5;
 
   const groups = useMemo(() => {
@@ -709,7 +709,7 @@ export const DatalakePage: React.FC = () => {
 
             {!isLoading && !error && view === 'table' && (
               <>
-                <div ref={headerRef} style={{ display: 'grid', gridTemplateColumns: template, background: 'var(--bg-sunken)', borderBottom: '1px solid var(--border-default)', position: 'sticky', top: 0, zIndex: 2 }}>
+                <div ref={headerRef} className="tessera-table-head" style={{ display: 'grid', gridTemplateColumns: template, background: 'var(--bg-sunken)', borderBottom: '1px solid var(--border-default)', position: 'sticky', top: 0, zIndex: 2 }}>
                   {COLUMN_LABELS.map((label, index) => (
                     <span
                       key={`${label}-${index}`}
@@ -718,7 +718,7 @@ export const DatalakePage: React.FC = () => {
                       style={{
                         ...EYEBROW,
                         position: 'relative',
-                        padding: '10px 12px',
+                        padding: '7px 12px',
                         paddingLeft: index === 0 ? 16 : 12,
                         textAlign: index === 5 || index === 6 ? 'right' : 'left',
                         cursor: label === 'Uploaded' ? 'pointer' : 'default',
@@ -745,7 +745,7 @@ export const DatalakePage: React.FC = () => {
 
             {!isLoading && !error && view === 'grouped' && (
               <>
-                <div ref={headerRef} style={{ display: 'grid', gridTemplateColumns: template, background: 'var(--bg-sunken)', borderBottom: '1px solid var(--border-default)', position: 'sticky', top: 0, zIndex: 2 }}>
+                <div ref={headerRef} className="tessera-table-head" style={{ display: 'grid', gridTemplateColumns: template, background: 'var(--bg-sunken)', borderBottom: '1px solid var(--border-default)', position: 'sticky', top: 0, zIndex: 2 }}>
                   {COLUMN_LABELS.map((label, index) => (
                     <span
                       key={`g-${label}-${index}`}
@@ -753,7 +753,7 @@ export const DatalakePage: React.FC = () => {
                       style={{
                         ...EYEBROW,
                         position: 'relative',
-                        padding: '10px 12px',
+                        padding: '7px 12px',
                         paddingLeft: index === 0 ? 16 : 12,
                         textAlign: index === 5 || index === 6 ? 'right' : 'left',
                         cursor: label === 'Uploaded' ? 'pointer' : 'default',
@@ -778,7 +778,7 @@ export const DatalakePage: React.FC = () => {
                     <React.Fragment key={group.name}>
                       <div
                         onClick={() => setCollapsed((state) => ({ ...state, [group.name]: !isCollapsed }))}
-                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', background: 'var(--bg-canvas)', borderBottom: '1px solid var(--border-default)', cursor: 'pointer', position: 'sticky', top: 37, zIndex: 1 }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', background: 'var(--bg-canvas)', borderBottom: '1px solid var(--border-default)', cursor: 'pointer', position: 'sticky', top: 32, zIndex: 1 }}
                       >
                         <Chevron dir={isCollapsed ? 'right' : 'down'} />
                         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600 }}>{group.name}</span>

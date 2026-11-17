@@ -482,7 +482,7 @@ export const ProjectsPage: React.FC = () => {
         onMouseLeave={() => setRunHoverId(null)}
         style={{
           ...(narrow
-            ? { display: 'flex', flexDirection: 'column', gap: 4, padding: '10px 16px' }
+            ? { display: 'flex', flexDirection: 'column', gap: 3, padding: '8px 16px' }
             : { display: 'grid', gridTemplateColumns: runTableTemplate, alignItems: 'center' }),
           cursor: 'pointer',
           borderBottom: `1px solid ${hovered ? 'rgba(255,255,255,0.15)' : 'var(--border-subtle)'}`,
@@ -561,7 +561,7 @@ export const ProjectsPage: React.FC = () => {
                 style={{ cursor: 'pointer', margin: 0 }}
               />
             </div>
-            <div style={{ padding: '9px 12px', minWidth: 0 }}>
+            <div style={{ padding: '5px 12px', minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                 <div style={{ minWidth: 0, flex: '1 1 auto', fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 500, color: hovered ? '#fff' : 'var(--fg-link)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {run.run_name}
@@ -572,7 +572,7 @@ export const ProjectsPage: React.FC = () => {
                 {run.system?.composition}
               </div>
               {runLabels.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 3 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
                   {runLabels.slice(0, 3).map((label) => (
                     <span
                       key={label}
@@ -1168,7 +1168,7 @@ export const ProjectsPage: React.FC = () => {
                 {tab === 'runs' && (
                   <>
                     {!narrow && activeRuns.length > 0 && runView.shown > 0 && (
-                      <div ref={runHeaderRef} style={{ display: 'grid', gridTemplateColumns: runTableTemplate, background: 'var(--bg-sunken)', borderBottom: '1px solid var(--border-default)', position: 'sticky', top: 0, zIndex: 1 }}>
+                      <div ref={runHeaderRef} className="tessera-table-head" style={{ display: 'grid', gridTemplateColumns: runTableTemplate, background: 'var(--bg-sunken)', borderBottom: '1px solid var(--border-default)', position: 'sticky', top: 0, zIndex: 1 }}>
                         <div style={{ padding: '8px 0 8px 16px', display: 'flex', alignItems: 'center' }}>
                           <input
                             type="checkbox"
@@ -1188,7 +1188,7 @@ export const ProjectsPage: React.FC = () => {
                             style={{
                               ...EYEBROW,
                               position: 'relative',
-                              padding: '8px 12px',
+                              padding: '6px 12px',
                               textAlign: index >= 4 ? 'right' : 'left',
                             }}
                           >
