@@ -7,6 +7,7 @@ from mddatalake.db.models.forcefield import ForceField
 from mddatalake.db.models.lineage import Lineage
 from mddatalake.db.models.observable import Observable
 from mddatalake.db.models.project import Project
+from mddatalake.db.models.run_group import RunGroup
 from mddatalake.db.models.simulation_run import SimulationRun
 from mddatalake.db.models.system import System
 from mddatalake.db.models.tag import Tag
@@ -23,6 +24,7 @@ __all__ = [
     "ForceField",
     "Engine",
     "SimulationRun",
+    "RunGroup",
     "Artifact",
     "Observable",
     "Lineage",

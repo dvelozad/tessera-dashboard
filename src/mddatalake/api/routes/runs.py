@@ -17,6 +17,7 @@ from sqlalchemy.orm import selectinload
 from mddatalake.core.config import settings
 from mddatalake.core.enums import ArtifactType, EnsembleType
 from mddatalake.db.models import Artifact, SimulationRun, Tag
+from mddatalake.db.models.run_group import RunGroup
 from mddatalake.db.session import get_db
 from mddatalake.storage import FilesystemBackend, get_storage_backend
 from mddatalake.storage.keys import cas_key
@@ -189,7 +190,7 @@ async def list_runs(
     if project_joined:
         stmt = stmt.options(contains_eager(SimulationRun.project))
     else:
-        stmt = stmt.options(selectinload(SimulationRun.project))
+        stmt = stmt.options(selectinload(SimulationRun.project), selectinload(SimulationRun.group))
 
     # Get total count before pagination
     from sqlalchemy import func
@@ -217,6 +218,8 @@ async def list_runs(
                 "run_name": run.run_name,
                 "project_id": run.project_id,
                 "project_name": run.project.name if run.project else "Unknown",
+                "group_id": run.group_id,
+                "group_name": run.group.name if run.group else None,
                 "ensemble": run.ensemble.value,
                 "simulation_method": run.simulation_method.value if run.simulation_method else None,
                 "particle_insertion": run.particle_insertion,
@@ -947,3 +950,38 @@ async def delete_run_tag(
         raise HTTPException(status_code=404, detail="Tag not found")
     await db.delete(tag)
     await db.commit()
+
+
+# ── Campaign assignment ──────────────────────────────────────────────────────
+
+class RunGroupAssign(BaseModel):
+    group_id: int | None = None
+
+
+@router.patch("/runs/{run_id}/group")
+async def assign_run_group(
+    run_id: int, payload: RunGroupAssign, db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Move a run into a campaign, or out of one with group_id: null."""
+    run = (
+        await db.execute(select(SimulationRun).where(SimulationRun.id == run_id))
+    ).scalar_one_or_none()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    if payload.group_id is not None:
+        group = (
+            await db.execute(
+                select(RunGroup).where(RunGroup.id == payload.group_id)
+            )
+        ).scalar_one_or_none()
+        if not group:
+            raise HTTPException(status_code=404, detail="Campaign not found")
+        if group.project_id != run.project_id:
+            raise HTTPException(
+                status_code=422, detail="Campaign belongs to a different project"
+            )
+
+    run.group_id = payload.group_id
+    await db.commit()
+    return {"run_id": run_id, "group_id": run.group_id}

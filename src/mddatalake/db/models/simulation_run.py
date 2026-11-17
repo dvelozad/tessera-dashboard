@@ -38,6 +38,10 @@ class SimulationRun(Base):
 
     # Foreign Keys
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
+    # Optional campaign inside the project; tags handle cross-cutting labels.
+    group_id: Mapped[int | None] = mapped_column(
+        ForeignKey("run_groups.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     system_id: Mapped[int] = mapped_column(ForeignKey("systems.id"), nullable=False, index=True)
     forcefield_id: Mapped[int | None] = mapped_column(ForeignKey("forcefields.id"), index=True)
     engine_id: Mapped[int] = mapped_column(ForeignKey("engines.id"), nullable=False, index=True)
@@ -117,6 +121,7 @@ class SimulationRun(Base):
     )
 
     # Relationships
+    group: Mapped["RunGroup | None"] = relationship("RunGroup", back_populates="runs")
     project: Mapped["Project"] = relationship("Project", back_populates="simulation_runs")
     system: Mapped["System"] = relationship("System", back_populates="simulation_runs")
     forcefield: Mapped["ForceField | None"] = relationship(

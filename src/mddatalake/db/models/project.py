@@ -39,6 +39,11 @@ class Project(Base):
         "ProjectCollaborator", back_populates="project", cascade="all, delete-orphan"
     )
 
+    run_groups: Mapped[list["RunGroup"]] = relationship(
+        "RunGroup", back_populates="project", cascade="all, delete-orphan",
+        order_by="RunGroup.position",
+    )
+
     links: Mapped[list["ProjectLink"]] = relationship(
         "ProjectLink", back_populates="project", cascade="all, delete-orphan"
     )

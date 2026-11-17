@@ -13,6 +13,7 @@ from mddatalake.auth.dependencies import get_current_user, require_contributor
 from mddatalake.db.models.project import Project
 from mddatalake.db.models.project_collaborator import ProjectCollaborator
 from mddatalake.db.models.project_link import ProjectLink
+from mddatalake.db.models.run_group import RunGroup
 from mddatalake.db.models.simulation_run import SimulationRun
 from mddatalake.db.models.user import User
 from mddatalake.db.session import get_db
@@ -370,4 +371,126 @@ async def delete_project_link(
     if not link:
         raise HTTPException(status_code=404, detail="Link not found")
     await db.delete(link)
+    await db.commit()
+
+
+# ── Campaigns (run groups) ────────────────────────────────────────────────────
+
+class RunGroupCreate(BaseModel):
+    name: str
+    description: str | None = None
+    color: str | None = None
+    position: int = 0
+
+
+class RunGroupUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    color: str | None = None
+    position: int | None = None
+
+
+def _group_dict(group: RunGroup) -> dict[str, Any]:
+    return {
+        "id": group.id,
+        "project_id": group.project_id,
+        "name": group.name,
+        "description": group.description,
+        "color": group.color,
+        "position": group.position,
+        "created_at": group.created_at.isoformat() if group.created_at else None,
+    }
+
+
+async def _require_project(db: AsyncSession, project_id: int) -> Project:
+    project = (
+        await db.execute(select(Project).where(Project.id == project_id))
+    ).scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project
+
+
+@router.get("/{project_id}/groups")
+async def list_run_groups(project_id: int, db: AsyncSession = Depends(get_db)) -> list[dict]:
+    result = await db.execute(
+        select(RunGroup)
+        .where(RunGroup.project_id == project_id)
+        .order_by(RunGroup.position, RunGroup.name)
+    )
+    return [_group_dict(group) for group in result.scalars().all()]
+
+
+@router.post("/{project_id}/groups", status_code=201)
+async def create_run_group(
+    project_id: int, payload: RunGroupCreate, db: AsyncSession = Depends(get_db)
+) -> dict:
+    await _require_project(db, project_id)
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="name cannot be empty")
+
+    existing = (
+        await db.execute(
+            select(RunGroup).where(
+                RunGroup.project_id == project_id, RunGroup.name == name
+            )
+        )
+    ).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=409, detail="A campaign with that name exists")
+
+    group = RunGroup(
+        project_id=project_id,
+        name=name,
+        description=payload.description,
+        color=payload.color,
+        position=payload.position,
+    )
+    db.add(group)
+    await db.commit()
+    await db.refresh(group)
+    return _group_dict(group)
+
+
+@router.patch("/{project_id}/groups/{group_id}")
+async def update_run_group(
+    project_id: int,
+    group_id: int,
+    payload: RunGroupUpdate,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    group = (
+        await db.execute(
+            select(RunGroup).where(
+                RunGroup.id == group_id, RunGroup.project_id == project_id
+            )
+        )
+    ).scalar_one_or_none()
+    if not group:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    for field in ("name", "description", "color", "position"):
+        value = getattr(payload, field)
+        if value is not None:
+            setattr(group, field, value)
+    await db.commit()
+    await db.refresh(group)
+    return _group_dict(group)
+
+
+@router.delete("/{project_id}/groups/{group_id}", status_code=204)
+async def delete_run_group(
+    project_id: int, group_id: int, db: AsyncSession = Depends(get_db)
+) -> None:
+    group = (
+        await db.execute(
+            select(RunGroup).where(
+                RunGroup.id == group_id, RunGroup.project_id == project_id
+            )
+        )
+    ).scalar_one_or_none()
+    if not group:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    await db.delete(group)
     await db.commit()
