@@ -133,16 +133,15 @@ class PreviewExtractionService:
                 atom_style = artifact.simulation_run.atom_style.value if artifact.simulation_run.atom_style else None
                 atom_type_mapping = artifact.simulation_run.atom_type_mapping
 
-                await self._extract_frames(
+                frames_written = await self._extract_frames(
                     trajectory_path,
                     topology_path,
                     output_path,
                     engine_name=engine_name,
                     frame_count=self.config.preview_frame_count,
                     atom_style=atom_style,
-                    atom_type_mapping=atom_type_mapping
+                    atom_type_mapping=atom_type_mapping,
                 )
-
                 # Upload the still, and the animation when there is one. Both
                 # share a base name built from their checksums, so a
                 # regenerated preview is always a new pair of blobs.
@@ -165,7 +164,10 @@ class PreviewExtractionService:
 
                 # Update artifact
                 artifact.preview_cache_key = preview_key
-                artifact.preview_frame_count = self.config.preview_frame_count
+                # Record what was actually written, not what was requested:
+                # a one-frame preview has no DCD, and the viewer must not ask
+                # for one.
+                artifact.preview_frame_count = frames_written
                 artifact.preview_generated_at = datetime.utcnow()
                 artifact.preview_status = "ready"
                 # Clear whatever a previous failed attempt recorded.
@@ -222,7 +224,7 @@ class PreviewExtractionService:
         frame_count: int,
         atom_style: str | None = None,
         atom_type_mapping: dict | None = None
-    ) -> None:
+    ) -> int:
         """
         Extract first N frames using MDAnalysis.
 
@@ -234,6 +236,9 @@ class PreviewExtractionService:
             frame_count: Number of frames to extract
             atom_style: LAMMPS atom style (optional, for custom formats)
             atom_type_mapping: Atom type to element/name mapping (optional)
+
+        Returns:
+            How many frames were actually written to the preview.
         """
         import MDAnalysis as mda
 
@@ -423,6 +428,7 @@ class PreviewExtractionService:
             trajectory_path.unlink()
 
         logger.info(f"Extracted {actual_frames} frames to {output_path}")
+        return actual_frames
 
     @staticmethod
     def _parse_lammps_masses(path: Path, max_lines: int = 20000) -> dict[str, float]:

@@ -97,7 +97,7 @@ export const SimulationPreview: React.FC<SimulationPreviewProps> = ({
                 setLoading(true);
                 setStatus('Requesting preview...');
 
-                const fetchPreview = async (): Promise<Blob | null> => {
+                const fetchPreview = async (): Promise<{ blob: Blob; frames: number } | null> => {
                     const token = localStorage.getItem('mddatalake_token');
                     const response = await fetch(`/api/v1/visualizations/runs/${runId}/preview`, {
                         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -125,10 +125,16 @@ export const SimulationPreview: React.FC<SimulationPreviewProps> = ({
                         throw new Error(`Failed to load preview (${response.status})`);
                     }
 
-                    return response.blob();
+                    // The header tells us whether a DCD sits next to the PDB,
+                    // so a single-frame preview never asks for a file that
+                    // cannot exist (and floods the console with a 404).
+                    const frames = Number(response.headers.get('X-Preview-Frame-Count')) || 1;
+                    return { blob: await response.blob(), frames };
                 };
 
-                const blob = await fetchPreview();
+                const preview = await fetchPreview();
+                const blob = preview?.blob;
+                const declaredFrames = preview?.frames ?? 1;
                 if (!blob || !mounted || !stageRef.current) {
                     console.log('Blob fetch failed or component unmounted');
                     return;
@@ -156,37 +162,39 @@ export const SimulationPreview: React.FC<SimulationPreviewProps> = ({
 
                 // The still is a PDB topology; when the run has an animated
                 // preview, a DCD sits next to it and NGL plays it in place.
-                try {
-                    const token = localStorage.getItem('mddatalake_token');
-                    const response = await fetch(
-                        `/api/v1/visualizations/runs/${runId}/preview/trajectory`,
-                        {
-                            headers: token ? { Authorization: `Bearer ${token}` } : {},
-                            cache: 'no-store',
-                        }
-                    );
-                    if (response.ok) {
-                        const trajectoryBlob = await response.blob();
-                        const frames = await (autoLoad as any)(trajectoryBlob, { ext: 'dcd' });
-                        const trajectory = (component as any).addTrajectory?.(frames);
-                        const count =
-                            frames?.coordinates?.length ??
-                            trajectory?.trajectory?.frameCount ??
-                            1;
-                        console.log('preview: trajectory attached with frames:', count);
-                        setFrameCount(Math.max(1, Number(count) || 1));
+                if (declaredFrames > 1) {
+                    try {
+                        const token = localStorage.getItem('mddatalake_token');
+                        const response = await fetch(
+                            `/api/v1/visualizations/runs/${runId}/preview/trajectory`,
+                            {
+                                headers: token ? { Authorization: `Bearer ${token}` } : {},
+                                cache: 'no-store',
+                            }
+                        );
+                        if (response.ok) {
+                            const trajectoryBlob = await response.blob();
+                            const frames = await (autoLoad as any)(trajectoryBlob, { ext: 'dcd' });
+                            const trajectory = (component as any).addTrajectory?.(frames);
+                            const count =
+                                frames?.coordinates?.length ??
+                                trajectory?.trajectory?.frameCount ??
+                                1;
+                            console.log('preview: trajectory attached with frames:', count);
+                            setFrameCount(Math.max(1, Number(count) || 1));
 
-                        // Attach frame controller so playback timer and slider advance frames
-                        (component as any).setFrame = (frameIndex: number) => {
-                            trajectory?.setFrame?.(frameIndex);
-                            stageRef.current?.viewer?.requestRender();
-                        };
-                    } else {
+                            // Attach frame controller so playback timer and slider advance frames
+                            (component as any).setFrame = (frameIndex: number) => {
+                                trajectory?.setFrame?.(frameIndex);
+                                stageRef.current?.viewer?.requestRender();
+                            };
+                        } else {
+                            setFrameCount(1);
+                        }
+                    } catch (trajectoryError) {
+                        console.debug('preview: no trajectory attached', trajectoryError);
                         setFrameCount(1);
                     }
-                } catch (trajectoryError) {
-                    console.debug('preview: no trajectory attached', trajectoryError);
-                    setFrameCount(1);
                 }
 
                 if (!component || !component.structure) {

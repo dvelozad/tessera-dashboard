@@ -109,7 +109,7 @@ async def test_extract_preview_success_lammps(
     assert result is True
     assert mock_trajectory_artifact.preview_status == "ready"
     assert mock_trajectory_artifact.preview_cache_key == "preview/artifact_1.pdb"
-    assert mock_trajectory_artifact.preview_frame_count == 1
+    assert mock_trajectory_artifact.preview_frame_count == 8
     assert mock_trajectory_artifact.preview_generated_at is not None
     assert mock_db.commit.called
 
