@@ -15,6 +15,17 @@ import type {
   ProjectCreate,
 } from '@/types/visualization';
 
+/** A campaign: a named sub-division of a project's runs. */
+export interface RunGroup {
+  id: number;
+  project_id: number;
+  name: string;
+  description: string | null;
+  color: string | null;
+  position: number;
+  created_at?: string;
+}
+
 class APIClient {
   private client: AxiosInstance;
 
@@ -352,6 +363,38 @@ class APIClient {
 
   async removeProjectLink(projectId: number, linkId: number): Promise<void> {
     await this.client.delete(`/projects/${projectId}/links/${linkId}`);
+  }
+
+  // Campaigns (run groups) inside a project
+  async listProjectGroups(projectId: number): Promise<RunGroup[]> {
+    const response = await this.client.get(`/projects/${projectId}/groups`);
+    return response.data;
+  }
+
+  async createProjectGroup(
+    projectId: number,
+    group: { name: string; description?: string; color?: string }
+  ): Promise<RunGroup> {
+    const response = await this.client.post(`/projects/${projectId}/groups`, group);
+    return response.data;
+  }
+
+  async updateProjectGroup(
+    projectId: number,
+    groupId: number,
+    patch: Partial<Pick<RunGroup, 'name' | 'description' | 'color' | 'position'>>
+  ): Promise<RunGroup> {
+    const response = await this.client.patch(`/projects/${projectId}/groups/${groupId}`, patch);
+    return response.data;
+  }
+
+  async deleteProjectGroup(projectId: number, groupId: number): Promise<void> {
+    await this.client.delete(`/projects/${projectId}/groups/${groupId}`);
+  }
+
+  async setRunGroup(runId: number, groupId: number | null): Promise<unknown> {
+    const response = await this.client.patch(`/runs/${runId}/group`, { group_id: groupId });
+    return response.data;
   }
 
   // Run labels

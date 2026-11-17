@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useIsNarrow } from '@/hooks/useIsNarrow';
-import apiClient from '@/services/api';
+import apiClient, { type RunGroup } from '@/services/api';
 import type { Project, ProjectLink, SimulationRun } from '@/types/visualization';
 import { EditProjectDialog } from '@/components/projects/EditProjectDialog';
 import {
@@ -22,6 +22,44 @@ import {
 const COLS = 'minmax(150px,2fr) 96px 104px minmax(140px,1.4fr) 70px 64px 94px';
 
 type ProjectTab = 'runs' | 'resources' | 'people' | 'about';
+
+type ProjectRun = SimulationRun & {
+  project_name?: string;
+  group_id?: number | null;
+  group_name?: string | null;
+};
+
+/** 'all', 'none' (ungrouped) or a campaign id. */
+type CampaignFilter = 'all' | 'none' | number;
+
+interface CampaignSection {
+  key: string;
+  filter: number | 'none';
+  name: string;
+  description: string | null;
+  color: string | null;
+  runs: ProjectRun[];
+}
+
+const chipStyle = (on: boolean): React.CSSProperties => ({
+  all: 'unset',
+  cursor: 'pointer',
+  flex: 'none',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  height: 28,
+  padding: '0 10px',
+  borderRadius: 4,
+  boxSizing: 'border-box',
+  border: `1px solid ${on ? 'var(--primary-500)' : 'var(--border-default)'}`,
+  background: on ? 'var(--primary-500)' : 'var(--bg-surface)',
+  color: on ? '#fff' : 'var(--fg-default)',
+  fontFamily: 'var(--font-mono)',
+  fontSize: 12,
+  fontWeight: 600,
+  whiteSpace: 'nowrap',
+});
 
 const actionButton = (primary = false): React.CSSProperties => ({
   all: 'unset',
@@ -100,6 +138,12 @@ export const ProjectsPage: React.FC = () => {
   const [linkLabel, setLinkLabel] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
   const [linkType, setLinkType] = useState('github');
+  const [runSearch, setRunSearch] = useState('');
+  const [campaign, setCampaign] = useState<CampaignFilter>('all');
+  const [newestFirst, setNewestFirst] = useState(true);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [runHoverId, setRunHoverId] = useState<number | null>(null);
+  const [sectionHover, setSectionHover] = useState<string | null>(null);
 
   // Returning from a run: land on the project it came from.
   React.useEffect(() => {
@@ -114,7 +158,7 @@ export const ProjectsPage: React.FC = () => {
   const runsQuery = useQuery({ queryKey: ['runs', 'projects'], queryFn: () => apiClient.listRuns({ limit: 1000 }) });
 
   const projects = (projectsQuery.data ?? []) as Project[];
-  const runs = (runsQuery.data?.runs ?? []) as (SimulationRun & { project_name?: string })[];
+  const runs = (runsQuery.data?.runs ?? []) as ProjectRun[];
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -129,7 +173,102 @@ export const ProjectsPage: React.FC = () => {
   }, [projects, query]);
 
   const active = projects.find((project) => project.id === selected) || filtered[0];
-  const activeRuns = runs.filter((run) => (active ? run.project_name === active.name : false));
+  const activeRuns = useMemo(
+    () => runs.filter((run) => (active ? run.project_name === active.name : false)),
+    [runs, active?.name]
+  );
+
+  const groupsQuery = useQuery({
+    queryKey: ['project-groups', active?.id],
+    queryFn: () => apiClient.listProjectGroups(active!.id),
+    enabled: !!active,
+  });
+
+  const needle = runSearch.trim().toLowerCase();
+  const activeRunIds = activeRuns.map((run) => run.id).join(',');
+  // The run list carries no tags, so they are fetched per run, and only once the user searches.
+  const tagsQuery = useQuery({
+    queryKey: ['project-run-tags', active?.id, activeRunIds],
+    queryFn: async () => {
+      const entries = await Promise.all(
+        activeRuns.map(async (run) => [run.id, await apiClient.listRunTags(run.id).catch(() => [])] as const)
+      );
+      return Object.fromEntries(entries) as Record<number, string[]>;
+    },
+    enabled: !!active && needle.length > 0 && activeRuns.length > 0,
+    staleTime: 60_000,
+  });
+
+  // A new project starts unfiltered.
+  React.useEffect(() => {
+    setRunSearch('');
+    setCampaign('all');
+  }, [active?.id]);
+
+  const runView = useMemo(() => {
+    const groups = [...((groupsQuery.data ?? []) as RunGroup[])].sort(
+      (a, b) => a.position - b.position || a.name.localeCompare(b.name)
+    );
+    const tags = tagsQuery.data ?? {};
+    const time = (run: ProjectRun) => (run.created_at ? Date.parse(run.created_at) : NaN);
+    const ordered = [...activeRuns].sort((a, b) => {
+      const ta = time(a);
+      const tb = time(b);
+      if (Number.isNaN(ta)) return 1;
+      if (Number.isNaN(tb)) return -1;
+      return newestFirst ? tb - ta : ta - tb;
+    });
+    const searched = needle
+      ? ordered.filter((run) =>
+          [run.run_name, run.system?.composition, run.group_name, ...(tags[run.id] ?? [])]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase()
+            .includes(needle)
+        )
+      : ordered;
+
+    const sections: CampaignSection[] = groups.map((group) => ({
+      key: `g${group.id}`,
+      filter: group.id,
+      name: group.name,
+      description: group.description,
+      color: group.color,
+      runs: searched.filter((run) => run.group_id === group.id),
+    }));
+    // A run can point at a campaign the groups request has not returned yet.
+    const known = new Set(groups.map((group) => group.id));
+    for (const run of searched) {
+      if (run.group_id == null || known.has(run.group_id)) continue;
+      known.add(run.group_id);
+      sections.push({
+        key: `g${run.group_id}`,
+        filter: run.group_id,
+        name: run.group_name || `Campaign ${run.group_id}`,
+        description: null,
+        color: null,
+        runs: searched.filter((other) => other.group_id === run.group_id),
+      });
+    }
+    sections.push({
+      key: 'none',
+      filter: 'none',
+      name: 'Ungrouped',
+      description: null,
+      color: null,
+      runs: searched.filter((run) => run.group_id == null),
+    });
+
+    const hasCampaigns = sections.length > 1;
+    const visible = sections.filter((section) => {
+      if (campaign !== 'all') return section.filter === campaign;
+      // Empty campaigns are shown while browsing, hidden while searching; Ungrouped only when it has runs.
+      if (section.filter === 'none') return section.runs.length > 0;
+      return !needle || section.runs.length > 0;
+    });
+    const shown = visible.reduce((sum, section) => sum + section.runs.length, 0);
+    return { sections, visible, hasCampaigns, searchedCount: searched.length, shown };
+  }, [activeRuns, groupsQuery.data, tagsQuery.data, needle, newestFirst, campaign]);
 
   React.useEffect(() => {
     if (!active) {
@@ -210,6 +349,209 @@ export const ProjectsPage: React.FC = () => {
     };
   })();
 
+  const openRun = (run: ProjectRun) =>
+    active &&
+    navigate(`/runs/${run.id}`, {
+      state: { from: 'projects', projectId: active.id, projectName: active.name },
+    });
+
+  // Desktop: the seven-column grid. Phone: the handoff's stacked three-line row.
+  const renderRunRow = (run: ProjectRun) => {
+    const method = methodOf(run.simulation_method);
+    const quality = run.completeness_score ?? 0;
+    const hovered = runHoverId === run.id;
+    const muted = hovered ? 'rgba(255,255,255,0.8)' : 'var(--fg-muted)';
+    const engineTag = (
+      <span style={{ flex: 'none', fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 600, padding: '1px 5px', border: `1px solid ${hovered ? 'rgba(255,255,255,0.6)' : 'var(--border-strong)'}`, borderRadius: 2, color: hovered ? '#fff' : 'var(--fg-default)' }}>
+        {run.engine?.name}
+      </span>
+    );
+    const methodPill = (
+      <span style={{ flex: 'none', display: 'inline-block', fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: hovered ? '#fff' : METHOD_COLOR[method], color: hovered ? 'var(--primary-700)' : '#fff', whiteSpace: 'nowrap' }}>
+        {METHOD_LABEL[method]}
+      </span>
+    );
+    const qualityBar = (
+      <>
+        <div style={{ flex: 1, minWidth: 24, height: 2, background: hovered ? 'rgba(255,255,255,0.25)' : 'var(--border-default)', borderRadius: 1, overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${quality}%`, background: hovered ? '#fff' : qualityColor(quality) }} />
+        </div>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: hovered ? '#fff' : 'var(--fg-muted)' }}>{quality}</span>
+      </>
+    );
+    const conditions = fmtConditions(run.ensemble, run.temperature_target, run.pressure_target) || '—';
+    return (
+      <div
+        key={run.id}
+        data-run-row
+        data-created={run.created_at}
+        onClick={() => openRun(run)}
+        onMouseEnter={() => setRunHoverId(run.id)}
+        onMouseLeave={() => setRunHoverId(null)}
+        style={{
+          ...(narrow
+            ? { display: 'flex', flexDirection: 'column', gap: 4, padding: '10px 16px' }
+            : { display: 'grid', gridTemplateColumns: COLS, alignItems: 'center' }),
+          cursor: 'pointer',
+          borderBottom: `1px solid ${hovered ? 'rgba(255,255,255,0.15)' : 'var(--border-subtle)'}`,
+          background: hovered ? 'var(--primary-500)' : 'transparent',
+          color: hovered ? '#fff' : 'var(--fg-default)',
+          lineHeight: 1.3,
+          transition: 'background 120ms cubic-bezier(0.4,0,0.2,1)',
+        }}
+      >
+        {narrow ? (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <span style={{ flex: 1, minWidth: 0, fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 500, color: hovered ? '#fff' : 'var(--fg-link)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {run.run_name}
+              </span>
+              {engineTag}
+              {methodPill}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: muted, minWidth: 0 }}>
+              <span style={{ minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{conditions}</span>
+              <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>{fmtLength(run.total_time)}</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'var(--font-mono)', fontSize: 11, color: muted, minWidth: 0 }}>
+              <span style={{ minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{run.system?.composition}</span>
+              <span style={{ flex: 'none', whiteSpace: 'nowrap' }}>· {fmtAtoms(run.system?.n_atoms)}</span>
+              {qualityBar}
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ padding: '9px 16px', minWidth: 0 }}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 500, color: hovered ? '#fff' : 'var(--fg-link)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {run.run_name}
+              </div>
+              <div style={{ fontSize: 11, color: muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {run.system?.composition}
+              </div>
+            </div>
+            <div style={{ padding: '0 12px' }}>{engineTag}</div>
+            <div style={{ padding: '0 12px' }}>{methodPill}</div>
+            <div style={{ padding: '0 12px', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{conditions}</div>
+            <div style={{ padding: '0 12px', fontFamily: 'var(--font-mono)', fontSize: 12, textAlign: 'right' }}>{fmtLength(run.total_time)}</div>
+            <div style={{ padding: '0 12px', fontFamily: 'var(--font-mono)', fontSize: 12, textAlign: 'right' }}>{fmtAtoms(run.system?.n_atoms)}</div>
+            <div style={{ padding: '0 12px', display: 'flex', alignItems: 'center', gap: 8 }}>{qualityBar}</div>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const renderSection = (section: CampaignSection) => {
+    const collapseKey = `${active?.id}:${section.key}`;
+    const isCollapsed = !!collapsed[collapseKey];
+    const hovered = sectionHover === section.key;
+    const descId = `campaign-desc-${section.key}`;
+    return (
+      <section key={section.key} aria-label={section.name}>
+        <button
+          type="button"
+          data-campaign={section.name}
+          data-count={section.runs.length}
+          aria-expanded={!isCollapsed}
+          aria-describedby={section.description ? descId : undefined}
+          onClick={() => setCollapsed((current) => ({ ...current, [collapseKey]: !isCollapsed }))}
+          onMouseEnter={() => setSectionHover(section.key)}
+          onMouseLeave={() => setSectionHover(null)}
+          style={{
+            all: 'unset',
+            boxSizing: 'border-box',
+            cursor: 'pointer',
+            width: '100%',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 8,
+            padding: narrow ? '10px 16px' : '9px 16px',
+            minHeight: narrow ? 44 : undefined,
+            background: hovered ? 'var(--bg-hover)' : 'var(--bg-canvas)',
+            borderBottom: '1px solid var(--border-default)',
+          }}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="var(--fg-muted)"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ flex: 'none', marginTop: 2, transform: isCollapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 120ms' }}
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+          <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              {section.color && (
+                <span style={{ flex: 'none', width: 8, height: 8, borderRadius: 1, background: section.color }} />
+              )}
+              <span
+                style={{
+                  minWidth: 0,
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: section.filter === 'none' ? 'var(--fg-muted)' : 'var(--fg-default)',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {section.name}
+              </span>
+              <span style={{ flex: 'none', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--fg-muted)' }}>
+                {section.runs.length} {section.runs.length === 1 ? 'run' : 'runs'}
+              </span>
+            </span>
+            {section.description && (
+              <span id={descId} style={{ fontSize: 12, color: 'var(--fg-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {section.description}
+              </span>
+            )}
+          </span>
+        </button>
+        {!isCollapsed && section.runs.map(renderRunRow)}
+        {!isCollapsed && section.runs.length === 0 && (
+          <div style={{ padding: '10px 16px 10px 38px', fontSize: 12, color: 'var(--fg-muted)', borderBottom: '1px solid var(--border-subtle)' }}>
+            No runs in this campaign yet.
+          </div>
+        )}
+      </section>
+    );
+  };
+
+  const chipCount = (filter: CampaignFilter) =>
+    filter === 'all'
+      ? runView.searchedCount
+      : runView.sections.find((section) => section.filter === filter)?.runs.length ?? 0;
+
+  const chips: { filter: CampaignFilter; label: string }[] = runView.hasCampaigns
+    ? [
+        { filter: 'all', label: 'All' },
+        ...runView.sections
+          .filter((section) => section.filter !== 'none')
+          .map((section) => ({ filter: section.filter as number, label: section.name })),
+        ...(activeRuns.some((run) => run.group_id == null)
+          ? [{ filter: 'none' as const, label: 'Ungrouped' }]
+          : []),
+      ]
+    : [];
+
+  const selectCampaign = (filter: CampaignFilter) => {
+    setCampaign(filter);
+    if (filter !== 'all' && active) {
+      const key = `${active.id}:${filter === 'none' ? 'none' : `g${filter}`}`;
+      setCollapsed((current) => ({ ...current, [key]: false }));
+    }
+  };
+
+  const campaignLabel =
+    campaign === 'all' ? null : chips.find((chip) => chip.filter === campaign)?.label ?? null;
+
   const tabs: { key: ProjectTab; label: string; count?: number }[] = [
     { key: 'runs', label: 'Runs', count: activeRuns.length },
     { key: 'resources', label: 'Resources', count: links.length },
@@ -218,7 +560,7 @@ export const ProjectsPage: React.FC = () => {
   ];
 
   return (
-    <main style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', padding: '16px 24px', gap: 12 }}>
+    <main style={{ flex: narrow ? '1 0 auto' : 1, minHeight: 0, display: 'flex', flexDirection: 'column', padding: '16px 24px', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flex: 'none' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={EYEBROW}>Projects</span>
@@ -251,9 +593,9 @@ export const ProjectsPage: React.FC = () => {
         </button>
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: narrow ? '1fr' : '340px minmax(0,1fr)', gap: 16 }}>
+      <div style={{ flex: narrow ? 'none' : 1, minHeight: 0, display: 'grid', gridTemplateColumns: narrow ? 'minmax(0,1fr)' : '340px minmax(0,1fr)', gap: 16 }}>
         {/* Project list */}
-        <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg-surface)', border: '1px solid var(--border-default)', borderRadius: 4, boxShadow: 'var(--shadow-1)', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, maxHeight: narrow ? 320 : undefined, background: 'var(--bg-surface)', border: '1px solid var(--border-default)', borderRadius: 4, boxShadow: 'var(--shadow-1)', overflow: 'hidden' }}>
           <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', height: 40, borderBottom: '1px solid var(--border-default)' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--fg-muted)" strokeWidth="1.5" strokeLinecap="round">
               <circle cx="11" cy="11" r="8" />
@@ -423,8 +765,10 @@ export const ProjectsPage: React.FC = () => {
                   display: 'flex',
                   gap: 4,
                   borderBottom: '1px solid var(--border-default)',
-                  padding: '0 24px',
+                  padding: narrow ? '0 12px' : '0 24px',
                   background: 'var(--bg-surface)',
+                  overflowX: narrow ? 'auto' : undefined,
+                  scrollbarWidth: 'none',
                 }}
               >
                 {tabs.map((item) => {
@@ -441,7 +785,9 @@ export const ProjectsPage: React.FC = () => {
                         fontWeight: isActive ? 600 : 500,
                         color: isActive ? 'var(--fg-default)' : 'var(--fg-muted)',
                         borderBottom: `2px solid ${isActive ? 'var(--primary-500)' : 'transparent'}`,
-                        marginBottom: -1,
+                        marginBottom: narrow ? 0 : -1,
+                        flex: 'none',
+                        whiteSpace: 'nowrap',
                         display: 'flex',
                         gap: 6,
                         alignItems: 'center',
@@ -456,81 +802,125 @@ export const ProjectsPage: React.FC = () => {
                 })}
               </div>
 
+              {tab === 'runs' && activeRuns.length > 0 && (
+                <div
+                  style={{
+                    flex: 'none',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                    padding: narrow ? '10px 16px' : '10px 24px',
+                    borderBottom: '1px solid var(--border-default)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ flex: '1 1 auto', maxWidth: narrow ? undefined : 360, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, height: narrow ? 40 : 32, padding: '0 10px', border: '1px solid var(--border-default)', borderRadius: 4, background: 'var(--bg-surface)', boxSizing: 'border-box' }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--fg-muted)" strokeWidth="1.5" strokeLinecap="round" style={{ flex: 'none' }}>
+                        <circle cx="11" cy="11" r="8" />
+                        <path d="m21 21-4.3-4.3" />
+                      </svg>
+                      <input
+                        value={runSearch}
+                        onChange={(e) => setRunSearch(e.target.value)}
+                        placeholder={narrow ? 'Search runs' : 'Filter by name, composition, campaign, tag'}
+                        aria-label="Filter runs"
+                        style={{ flex: 1, minWidth: 0, border: 0, outline: 0, background: 'transparent', fontSize: narrow ? 16 : 13, color: 'var(--fg-default)', fontFamily: 'var(--font-sans)' }}
+                      />
+                      {runSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setRunSearch('')}
+                          aria-label="Clear run filter"
+                          style={{ all: 'unset', cursor: 'pointer', flex: 'none', color: 'var(--fg-muted)', fontSize: 16, lineHeight: 1, padding: '0 2px' }}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      data-sort
+                      onClick={() => setNewestFirst((value) => !value)}
+                      title="Sort by upload date"
+                      style={{ ...chipStyle(false), height: narrow ? 40 : 32, fontFamily: 'var(--font-sans)', fontSize: 12, fontWeight: 500, color: 'var(--fg-muted)', marginLeft: narrow ? 0 : 'auto' }}
+                    >
+                      {newestFirst ? 'Newest' : 'Oldest'}
+                      <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-default)' }}>{newestFirst ? '↓' : '↑'}</span>
+                    </button>
+                  </div>
+                  {chips.length > 0 && (
+                    <div
+                      role="group"
+                      aria-label="Campaign"
+                      style={{
+                        display: 'flex',
+                        gap: 6,
+                        flexWrap: narrow ? 'nowrap' : 'wrap',
+                        overflowX: narrow ? 'auto' : undefined,
+                        scrollbarWidth: 'none',
+                        margin: narrow ? '0 -16px' : undefined,
+                        padding: narrow ? '0 16px' : undefined,
+                      }}
+                    >
+                      {chips.map((chip) => {
+                        const on = campaign === chip.filter;
+                        return (
+                          <button
+                            key={String(chip.filter)}
+                            type="button"
+                            data-chip={chip.label}
+                            aria-pressed={on}
+                            onClick={() => selectCampaign(chip.filter)}
+                            style={{ ...chipStyle(on), height: narrow ? 32 : 28, fontStyle: chip.filter === 'none' ? 'italic' : undefined }}
+                          >
+                            {chip.label}
+                            <span style={{ opacity: 0.7, fontWeight: 500 }}>{chipCount(chip.filter)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
                 {tab === 'runs' && (
                   <>
-                    <div style={{ display: 'grid', gridTemplateColumns: COLS, background: 'var(--bg-sunken)', borderBottom: '1px solid var(--border-default)', position: 'sticky', top: 0, zIndex: 1 }}>
-                      {['Run', 'Engine', 'Method', 'Conditions', 'Length', 'Atoms', 'Quality'].map((label, index) => (
-                        <span key={label} style={{ ...EYEBROW, padding: '8px 12px', paddingLeft: index === 0 ? 16 : 12, textAlign: index >= 4 ? 'right' : 'left' }}>
-                          {label}
-                        </span>
-                      ))}
-                    </div>
-                    {activeRuns.map((run) => {
-                      const method = methodOf(run.simulation_method);
-                      const quality = run.completeness_score ?? 0;
-                      const hovered = hoverId === run.id;
-                      const muted = hovered ? 'rgba(255,255,255,0.8)' : 'var(--fg-muted)';
-                      return (
-                        <div
-                          key={run.id}
-                          onClick={() =>
-                            navigate(`/runs/${run.id}`, {
-                              state: {
-                                from: 'projects',
-                                projectId: active.id,
-                                projectName: active.name,
-                              },
-                            })
-                          }
-                          onMouseEnter={() => setHoverId(run.id)}
-                          onMouseLeave={() => setHoverId(null)}
-                          style={{
-                            display: 'grid',
-                            gridTemplateColumns: COLS,
-                            alignItems: 'center',
-                            cursor: 'pointer',
-                            borderBottom: `1px solid ${hovered ? 'rgba(255,255,255,0.15)' : 'var(--border-subtle)'}`,
-                            background: hovered ? 'var(--primary-500)' : 'transparent',
-                            color: hovered ? '#fff' : 'var(--fg-default)',
-                            lineHeight: 1.3,
-                            transition: 'background 120ms cubic-bezier(0.4,0,0.2,1)',
-                          }}
-                        >
-                          <div style={{ padding: '9px 16px', minWidth: 0 }}>
-                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 500, color: hovered ? '#fff' : 'var(--fg-link)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {run.run_name}
-                            </div>
-                            <div style={{ fontSize: 11, color: muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {run.system?.composition}
-                            </div>
-                          </div>
-                          <div style={{ padding: '0 12px' }}>
-                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 600, padding: '1px 5px', border: `1px solid ${hovered ? 'rgba(255,255,255,0.6)' : 'var(--border-strong)'}`, borderRadius: 2, color: hovered ? '#fff' : 'var(--fg-default)' }}>
-                              {run.engine?.name}
-                            </span>
-                          </div>
-                          <div style={{ padding: '0 12px' }}>
-                            <span style={{ display: 'inline-block', fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: hovered ? '#fff' : METHOD_COLOR[method], color: hovered ? 'var(--primary-700)' : '#fff', whiteSpace: 'nowrap' }}>
-                              {METHOD_LABEL[method]}
-                            </span>
-                          </div>
-                          <div style={{ padding: '0 12px', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {fmtConditions(run.ensemble, run.temperature_target, run.pressure_target) || '—'}
-                          </div>
-                          <div style={{ padding: '0 12px', fontFamily: 'var(--font-mono)', fontSize: 12, textAlign: 'right' }}>{fmtLength(run.total_time)}</div>
-                          <div style={{ padding: '0 12px', fontFamily: 'var(--font-mono)', fontSize: 12, textAlign: 'right' }}>{fmtAtoms(run.system?.n_atoms)}</div>
-                          <div style={{ padding: '0 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <div style={{ flex: 1, height: 2, background: hovered ? 'rgba(255,255,255,0.25)' : 'var(--border-default)', borderRadius: 1, overflow: 'hidden' }}>
-                              <div style={{ height: '100%', width: `${quality}%`, background: hovered ? '#fff' : qualityColor(quality) }} />
-                            </div>
-                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: hovered ? '#fff' : 'var(--fg-muted)' }}>{quality}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
+                    {!narrow && activeRuns.length > 0 && runView.shown > 0 && (
+                      <div style={{ display: 'grid', gridTemplateColumns: COLS, background: 'var(--bg-sunken)', borderBottom: '1px solid var(--border-default)', position: 'sticky', top: 0, zIndex: 1 }}>
+                        {['Run', 'Engine', 'Method', 'Conditions', 'Length', 'Atoms', 'Quality'].map((label, index) => (
+                          <span key={label} style={{ ...EYEBROW, padding: '8px 12px', paddingLeft: index === 0 ? 16 : 12, textAlign: index >= 4 ? 'right' : 'left' }}>
+                            {label}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {runView.shown > 0 &&
+                      (runView.hasCampaigns
+                        ? runView.visible.map(renderSection)
+                        : runView.visible.flatMap((section) => section.runs.map(renderRunRow)))}
                     {activeRuns.length === 0 && (
                       <div style={{ padding: 32, fontSize: 13, color: 'var(--fg-muted)' }}>This project has no runs yet.</div>
+                    )}
+                    {activeRuns.length > 0 && runView.shown === 0 && (
+                      <div style={{ padding: narrow ? '24px 16px' : 32, fontSize: 13, color: 'var(--fg-muted)', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 10 }}>
+                        <span>
+                          {needle && campaignLabel
+                            ? <>No runs in <b style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-default)' }}>{campaignLabel}</b> match “{runSearch.trim()}”.</>
+                            : needle
+                              ? <>No runs match “{runSearch.trim()}”.</>
+                              : <>No runs in <b style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-default)' }}>{campaignLabel}</b>.</>}
+                          {needle && tagsQuery.isFetching && ' Still loading tags…'}
+                        </span>
+                        <ActionButton
+                          onClick={() => {
+                            setRunSearch('');
+                            setCampaign('all');
+                          }}
+                        >
+                          Clear filters
+                        </ActionButton>
+                      </div>
                     )}
                   </>
                 )}

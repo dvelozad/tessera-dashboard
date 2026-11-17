@@ -19,10 +19,23 @@ import {
   type MethodCode,
 } from '@/lib/design';
 
-type RunRow = SimulationRun & { project_name?: string; project_id?: number };
+type RunRow = SimulationRun & {
+  project_name?: string;
+  project_id?: number;
+  group_id?: number | null;
+  group_name?: string | null;
+};
 
 type View = 'table' | 'grouped' | 'cards';
 type Density = 'comfortable' | 'compact';
+type GroupBy = 'project' | 'campaign' | 'engine' | 'method';
+
+const GROUP_BY_OPTIONS: { id: GroupBy; label: string }[] = [
+  { id: 'project', label: 'Project' },
+  { id: 'campaign', label: 'Campaign' },
+  { id: 'engine', label: 'Engine' },
+  { id: 'method', label: 'Method' },
+];
 
 const COLS =
   'minmax(170px,2fr) minmax(110px,1.1fr) 112px 118px minmax(150px,1.5fr) 74px 66px 104px 100px 32px';
@@ -94,6 +107,7 @@ export const DatalakePage: React.FC = () => {
   const [methods, setMethods] = useState<MethodCode[]>([]);
   const [minQ, setMinQ] = useState(0);
   const [view, setView] = useState<View>('table');
+  const [groupBy, setGroupBy] = useState<GroupBy>('project');
   const [density, setDensity] = useState<Density>('comfortable');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [page, setPage] = useState(1);
@@ -115,6 +129,7 @@ export const DatalakePage: React.FC = () => {
       const haystack = [
         run.run_name,
         run.project_name,
+        run.group_name,
         run.system?.composition,
         run.engine?.name,
         METHOD_LABEL[methodOf(run.simulation_method)],
@@ -169,17 +184,32 @@ export const DatalakePage: React.FC = () => {
   const rowFont = compact ? 12.5 : 13.5;
 
   const groups = useMemo(() => {
-    const byProject = new Map<string, RunRow[]>();
+    const byKey = new Map<string, RunRow[]>();
     visible.forEach((run) => {
-      const key = run.project_name || 'Unknown';
-      byProject.set(key, [...(byProject.get(key) || []), run]);
+      let key: string;
+      switch (groupBy) {
+        case 'campaign':
+          key = run.group_name || 'Ungrouped';
+          break;
+        case 'engine':
+          key = engineBucket(run.engine?.name);
+          break;
+        case 'method':
+          key = METHOD_LABEL[methodOf(run.simulation_method)];
+          break;
+        case 'project':
+        default:
+          key = run.project_name || 'Unknown';
+          break;
+      }
+      byKey.set(key, [...(byKey.get(key) || []), run]);
     });
-    return [...byProject.entries()].map(([name, rows]) => {
+    return [...byKey.entries()].map(([name, rows]) => {
       const totalNs = rows.reduce((sum, r) => sum + (r.total_time || 0), 0);
       const meanQ = Math.round(rows.reduce((sum, r) => sum + (r.completeness_score || 0), 0) / rows.length);
       return { name, rows, totalNs, meanQ };
     });
-  }, [visible]);
+  }, [visible, groupBy]);
 
   const renderRow = (run: RunRow) => {
     const method = methodOf(run.simulation_method);
@@ -544,6 +574,23 @@ export const DatalakePage: React.FC = () => {
                 })}
               </div>
             </div>
+
+            {view === 'grouped' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>Group by</span>
+                <div style={{ display: 'inline-flex', border: '1px solid var(--border-default)', borderRadius: 4, overflow: 'hidden', background: 'var(--bg-surface)' }}>
+                  {GROUP_BY_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.id}
+                      onClick={() => setGroupBy(opt.id)}
+                      style={toggleBtn(groupBy === opt.id)}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div style={{ display: 'inline-flex', border: '1px solid var(--border-default)', borderRadius: 4, overflow: 'hidden', background: 'var(--bg-surface)' }}>
               {(['table', 'grouped', 'cards'] as View[]).map((mode) => (
