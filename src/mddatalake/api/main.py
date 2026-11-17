@@ -82,10 +82,32 @@ app.include_router(projects.router, prefix="/api/v1", tags=["Projects"], depende
 # ---------------------------------------------------------------------------
 _frontend_dir = Path(settings.frontend_dir) if settings.frontend_dir else None
 
-if _frontend_dir and (_frontend_dir / "index.html").is_file():
-    assets_dir = _frontend_dir / "assets"
-    if assets_dir.is_dir():
-        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+if _frontend_dir:
+    # Mounted even when the directory is momentarily absent (a build running)
+    # and served lazily, so a rebuild never requires restarting the API.
+    app.mount(
+        "/assets",
+        StaticFiles(directory=_frontend_dir / "assets", check_dir=False),
+        name="assets",
+    )
+
+    def _spa_shell() -> FileResponse:
+        """The SPA entry point.
+
+        `no-cache` is deliberate: index.html names a hashed bundle, and a
+        rebuild deletes the old one. A cached shell would ask for a file that
+        no longer exists and the browser would render a blank page. While a
+        build is in flight the file is briefly absent, so say so plainly
+        instead of raising.
+        """
+        shell = _frontend_dir / "index.html"
+        if not shell.is_file():
+            raise HTTPException(
+                status_code=503,
+                detail="The web app is being rebuilt. Reload in a moment.",
+                headers={"Retry-After": "5"},
+            )
+        return FileResponse(shell, headers={"Cache-Control": "no-cache"})
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_spa(full_path: str):
@@ -100,7 +122,7 @@ if _frontend_dir and (_frontend_dir / "index.html").is_file():
             try:
                 candidate.relative_to(_frontend_dir.resolve())
             except ValueError:
-                return FileResponse(_frontend_dir / "index.html")
+                return _spa_shell()
             if candidate.is_file():
                 return FileResponse(candidate)
-        return FileResponse(_frontend_dir / "index.html")
+        return _spa_shell()
