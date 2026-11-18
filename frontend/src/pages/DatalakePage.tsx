@@ -15,6 +15,7 @@ import {
   fmtAtoms,
   fmtConditions,
   fmtDate,
+  fmtTime,
   fmtLength,
   methodOf,
   qualityColor,
@@ -40,7 +41,7 @@ const GROUP_BY_OPTIONS: { id: GroupBy; label: string }[] = [
 ];
 
 const COLS =
-  'minmax(170px,2fr) minmax(110px,1.1fr) 112px 118px minmax(150px,1.5fr) 74px 66px 104px 100px 44px';
+  'minmax(170px,2fr) minmax(110px,1.1fr) 112px 118px minmax(150px,1.5fr) 74px 66px 104px 112px 44px';
 
 const COLUMN_LABELS = [
   'Run', 'Project', 'Engine', 'Method', 'Conditions', 'Length', 'Atoms', 'Quality', 'Uploaded', '',
@@ -298,8 +299,9 @@ export const DatalakePage: React.FC = () => {
           </div>
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: hovered ? '#fff' : 'var(--fg-muted)', minWidth: 20, textAlign: 'right' }}>{q}</span>
         </div>
-        <div style={{ padding: '0 12px', fontFamily: 'var(--font-mono)', fontSize: 12, color: muted, whiteSpace: 'nowrap' }}>
-          {fmtDate(run.created_at)}
+        <div style={{ padding: '0 12px', fontFamily: 'var(--font-mono)', fontSize: 12, color: muted, whiteSpace: 'nowrap', lineHeight: 1.3 }}>
+          <div>{fmtDate(run.created_at)}</div>
+          <div style={{ fontSize: 11, opacity: 0.75 }}>{fmtTime(run.created_at)}</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, color: muted }}>
           <button
