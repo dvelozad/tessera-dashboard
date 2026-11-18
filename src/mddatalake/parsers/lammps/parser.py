@@ -334,11 +334,20 @@ class LammpsParser:
                         else:
                             metadata["ensemble"] = EnsembleType.NVE  # No pressure, constant volume
 
-            # Calculate total simulation time if we have both timestep and n_steps
+            # Calculate total simulation time if we have both timestep and n_steps.
+            # The timestep is only a number until the unit system says what it
+            # measures, so the conversion is done by unit: a reduced-unit run
+            # needs its τ mapping and is left unknown without one.
             if metadata.get("timestep") and metadata.get("n_steps"):
-                # timestep is in fs, convert to ns for total_time
-                total_time_fs = metadata["timestep"] * metadata["n_steps"]
-                metadata["total_time"] = total_time_fs / 1e6  # Convert fs to ns
+                from mddatalake.utils.units import normalise_units, simulated_time_ns
+
+                metadata["units"] = normalise_units(metadata.get("units"))
+                metadata["total_time"] = simulated_time_ns(
+                    metadata.get("units"),
+                    metadata.get("timestep"),
+                    metadata.get("n_steps"),
+                    metadata.get("lj_time_ps"),
+                )
 
             # Check exit status
             if "Total wall time:" in content:

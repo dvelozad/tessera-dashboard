@@ -4,6 +4,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     ARRAY,
+    Boolean,
     CheckConstraint,
     DateTime,
     Enum,
@@ -80,9 +81,21 @@ class SimulationRun(Base):
     pressure_target: Mapped[float | None] = mapped_column(Float)
 
     # Time Integration
-    timestep: Mapped[float | None] = mapped_column(Float)  # femtoseconds
+    # The unit system is what gives the timestep a meaning: 1 fs in 'real',
+    # 1 ps in 'metal', 1 τ in 'lj'. Without it a simulated time cannot be
+    # stated, so it is treated as required metadata.
+    units: Mapped[str | None] = mapped_column(String(20))
+    timestep: Mapped[float | None] = mapped_column(Float)  # in the system's time unit
     n_steps: Mapped[int | None] = mapped_column(Integer)
-    total_time: Mapped[float | None] = mapped_column(Float)  # nanoseconds (computed)
+    total_time: Mapped[float | None] = mapped_column(Float)  # nanoseconds
+    # True when a person stated the simulated time; a computed value must never
+    # overwrite a stated one.
+    time_is_manual: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    # Reduced (LJ) units carry no intrinsic length or time. These are the
+    # mapping the modeller chose: σ in nm and τ in ps.
+    lj_length_nm: Mapped[float | None] = mapped_column(Float)
+    lj_time_ps: Mapped[float | None] = mapped_column(Float)
 
     # Cutoffs
     cutoff_coulomb: Mapped[float | None] = mapped_column(Float)  # Angstroms

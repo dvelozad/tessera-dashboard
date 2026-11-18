@@ -91,6 +91,10 @@ class UpdateRunRequest(BaseModel):
     cutoff_vdw: float | None = None
     slurm_job_id: str | None = None
     compute_node: str | None = None
+    # Unit system and, for reduced units, the σ/τ mapping.
+    units: str | None = None
+    lj_length_nm: float | None = None
+    lj_time_ps: float | None = None
 
     class Config:
         extra = "forbid"  # Don't allow extra fields
@@ -260,9 +264,13 @@ async def list_runs(
                 "atom_style": run.atom_style.value if run.atom_style else None,
                 "temperature_target": run.temperature_target,
                 "pressure_target": run.pressure_target,
+                "units": run.units,
                 "timestep": run.timestep,
                 "n_steps": run.n_steps,
                 "total_time": run.total_time,
+                "lj_length_nm": run.lj_length_nm,
+                "lj_time_ps": run.lj_time_ps,
+                "time_is_manual": run.time_is_manual,
                 "engine": {
                     "name": run.engine.name if run.engine else "Unknown",
                     "version": run.engine.version if run.engine else "unknown",
@@ -323,9 +331,13 @@ async def get_run(run_id: int, db: AsyncSession = Depends(get_db)) -> dict[str, 
         "atom_style": run.atom_style.value if run.atom_style else None,
         "temperature_target": run.temperature_target,
         "pressure_target": run.pressure_target,
+        "units": run.units,
         "timestep": run.timestep,
         "n_steps": run.n_steps,
         "total_time": run.total_time,
+        "lj_length_nm": run.lj_length_nm,
+        "lj_time_ps": run.lj_time_ps,
+        "time_is_manual": run.time_is_manual,
         "cutoff_coulomb": run.cutoff_coulomb,
         "cutoff_vdw": run.cutoff_vdw,
         "exit_code": run.exit_code,
@@ -715,11 +727,26 @@ async def update_run(
         "cutoff_vdw",
         "slurm_job_id",
         "compute_node",
+        "lj_length_nm",
+        "lj_time_ps",
     )
     for field in simple:
         value = getattr(update_data, field)
         if value is not None:
             setattr(run, field, value)
+
+    # The unit system is a string column, validated against the systems the
+    # time conversion understands.
+    if update_data.units is not None:
+        from mddatalake.utils.units import UNIT_SYSTEMS, normalise_units
+
+        system = normalise_units(update_data.units)
+        if system is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"units must be one of: {', '.join(UNIT_SYSTEMS)}",
+            )
+        run.units = system
 
     enums = {
         "simulation_method": SimulationMethodType,
@@ -747,6 +774,26 @@ async def update_run(
                     status_code=422, detail=f"{field} must be one of: {allowed}"
                 )
 
+    # A stated simulated time is authoritative; only a computed one is
+    # recomputed when the unit system or the step count changes.
+    if update_data.total_time is not None:
+        run.time_is_manual = True
+
+    if not run.time_is_manual and any(
+        value is not None
+        for value in (
+            update_data.units,
+            update_data.timestep,
+            update_data.n_steps,
+            update_data.lj_time_ps,
+        )
+    ):
+        from mddatalake.utils.units import simulated_time_ns
+
+        run.total_time = simulated_time_ns(
+            run.units, run.timestep, run.n_steps, run.lj_time_ps
+        )
+
     # Commit changes
     await db.commit()
     await db.refresh(run)
@@ -755,6 +802,8 @@ async def update_run(
         "id": run.id,
         "run_name": run.run_name,
         "description": run.description,
+        "units": run.units,
+        "total_time": run.total_time,
         "message": "Run updated successfully",
     }
 

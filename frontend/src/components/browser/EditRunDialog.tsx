@@ -40,6 +40,9 @@ const SECTIONS: { title: string; fields: FieldDef[] }[] = [
   {
     title: 'Method',
     fields: [
+      // The timestep means nothing without this, so it leads the section.
+      { key: 'units', label: 'Unit system', kind: 'enum', options: ['real', 'metal', 'si', 'cgs', 'electron', 'micro', 'nano', 'lj', 'gromacs'] },
+      { key: 'timestep', label: 'Timestep', kind: 'number', unit: 'in the unit system' },
       { key: 'simulation_method', label: 'Simulation method', kind: 'enum', options: ['ATOMISTIC', 'H_ADRESS', 'COARSE_GRAINED', 'UNITED_ATOM', 'MONTE_CARLO'] },
       { key: 'ensemble', label: 'Ensemble', kind: 'enum', options: ['NVE', 'NVT', 'NPT', 'NPH', 'MUVT', 'NVT_NVE'] },
       { key: 'atom_style', label: 'Atom style', kind: 'enum', options: ['atomic', 'bond', 'angle', 'molecular', 'full', 'charge', 'dipole', 'sphere', 'ellipsoid', 'full/gc/HAdResS'] },
@@ -54,9 +57,8 @@ const SECTIONS: { title: string; fields: FieldDef[] }[] = [
     fields: [
       { key: 'temperature_target', label: 'Temperature', kind: 'number', unit: 'K' },
       { key: 'pressure_target', label: 'Pressure', kind: 'number', unit: 'bar' },
-      { key: 'timestep', label: 'Timestep', kind: 'number', unit: 'fs' },
       { key: 'n_steps', label: 'Steps', kind: 'int' },
-      { key: 'total_time', label: 'Total time', kind: 'number', unit: 'ns' },
+      { key: 'total_time', label: 'Simulated time', kind: 'number', unit: 'ns' },
     ],
   },
   {
@@ -75,7 +77,12 @@ const SECTIONS: { title: string; fields: FieldDef[] }[] = [
   },
 ];
 
-const ALL_FIELDS = SECTIONS.flatMap((section) => section.fields);
+const LJ_FIELDS: FieldDef[] = [
+  { key: 'lj_length_nm', label: 'σ (length scale)', kind: 'number', unit: 'nm' },
+  { key: 'lj_time_ps', label: 'τ (time scale)', kind: 'number', unit: 'ps' },
+];
+
+const ALL_FIELDS = [...SECTIONS.flatMap((section) => section.fields), ...LJ_FIELDS];
 const FIELD_LABEL: Record<string, string> = {
   run_name: 'Run name',
   description: 'Description',
@@ -238,6 +245,11 @@ export const EditRunDialog: React.FC<EditRunDialogProps> = ({ open, run, onClose
   const { patch: pending, invalid: pendingInvalid } = buildPatch();
   const metadataChanges = Object.keys(pending).length;
 
+  const unitsField = SECTIONS[0].fields.find((field) => field.key === 'units')!;
+  const storedUnits = matchOption(unitsField, stored('units')) ?? '';
+  // What the run will be recorded as if this dialog is saved.
+  const effectiveUnits = values.units.trim() || storedUnits;
+
   // Campaign and labels travel on their own endpoints, so they are applied
   // after the metadata patch and counted separately for "Save".
   const projectChanged = projectId !== initialProjectId;
@@ -270,6 +282,11 @@ export const EditRunDialog: React.FC<EditRunDialogProps> = ({ open, run, onClose
     }
     if (Object.keys(pendingInvalid).length) {
       setFieldErrors(pendingInvalid);
+      return;
+    }
+    // A run without a unit system cannot state what its timestep means.
+    if (!effectiveUnits) {
+      setFieldErrors({ units: 'Unit system is required' });
       return;
     }
     if (!changeCount || !run) return;
@@ -429,6 +446,8 @@ export const EditRunDialog: React.FC<EditRunDialogProps> = ({ open, run, onClose
 
           <Box component="p" sx={{ m: 0, fontSize: 13, color: 'var(--fg-muted)' }}>
             Grey values are what is stored now. Leave a field empty to keep it.
+            A simulated time you enter is kept as stated; otherwise it is derived
+            from the unit system, the timestep and the step count.
           </Box>
 
           {SECTIONS.map((section) => (
@@ -446,6 +465,27 @@ export const EditRunDialog: React.FC<EditRunDialogProps> = ({ open, run, onClose
               </Box>
             </Stack>
           ))}
+
+          {effectiveUnits === 'lj' && (
+            <Stack spacing={1.5}>
+              <Box component="span" sx={EYEBROW}>Reduced units</Box>
+              <Box component="p" sx={{ m: 0, fontSize: 12, color: 'var(--fg-muted)' }}>
+                Reduced units carry no intrinsic length or time. σ and τ are the
+                mapping you chose; without them the simulated time and the
+                obleas analyses of this run have no physical meaning.
+              </Box>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: phone ? '1fr' : 'repeat(2, minmax(0, 1fr))',
+                  columnGap: 2,
+                  rowGap: 0.5,
+                }}
+              >
+                {LJ_FIELDS.map(renderField)}
+              </Box>
+            </Stack>
+          )}
 
           <Stack spacing={1.5}>
             <Box component="span" sx={EYEBROW}>Organisation</Box>

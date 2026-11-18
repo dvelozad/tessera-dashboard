@@ -105,3 +105,22 @@ class LammpsAtomStyle(str, enum.Enum):
     SPHERE = "sphere"
     ELLIPSOID = "ellipsoid"
     FULL_GC_HADRESS = "full/gc/HAdResS"  # H-AdResS custom atom style
+
+
+class UnitSystem(str, enum.Enum):
+    """The unit system a run was integrated in.
+
+    LAMMPS styles are listed as LAMMPS spells them; ``gromacs`` covers the
+    fixed nm/ps/ps convention. A run without a unit system cannot say what its
+    timestep or its length means, so this is treated as required metadata.
+    """
+
+    REAL = "real"          # Å, fs, kcal/mol
+    METAL = "metal"        # Å, ps, eV
+    SI = "si"              # m, s, J
+    CGS = "cgs"            # cm, s, erg
+    ELECTRON = "electron"  # Bohr, fs, Hartree
+    MICRO = "micro"        # µm, µs, pg
+    NANO = "nano"          # nm, ns, attogram
+    LJ = "lj"              # reduced units: σ, ε, τ
+    GROMACS = "gromacs"    # nm, ps (GROMACS convention)

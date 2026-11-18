@@ -223,6 +223,10 @@ class IngestionService:
                 raise IngestionError(f"Unsupported engine: {engine_name}")
 
             metadata = parser.parse()
+            # GROMACS always integrates in nm/ps; there is no unit choice to
+            # record, but the run still has one.
+            if engine_name == "gromacs" and not metadata.get("units"):
+                metadata["units"] = "gromacs"
             return metadata
 
         except Exception as e:
@@ -361,6 +365,22 @@ class IngestionService:
         # Use atom mapping description as fallback if no description provided
         final_description = description or metadata.get("atom_mapping_description")
 
+        # A run's simulated time follows from its unit system, so it is
+        # recomputed rather than trusted from a record: records written before
+        # the unit system was tracked assumed every timestep was femtoseconds.
+        from mddatalake.utils.units import simulated_time_ns
+
+        units = metadata.get("units")
+        if units:
+            total_time = simulated_time_ns(
+                units,
+                metadata.get("timestep"),
+                metadata.get("n_steps"),
+                metadata.get("lj_time_ps"),
+            )
+        else:
+            total_time = metadata.get("total_time")
+
         run = SimulationRun(
             project_id=project.id,
             system_id=system.id,
@@ -381,7 +401,10 @@ class IngestionService:
             pressure_target=metadata.get("pressure_target"),
             timestep=metadata.get("timestep"),
             n_steps=metadata.get("n_steps"),
-            total_time=metadata.get("total_time"),
+            units=metadata.get("units"),
+            lj_length_nm=metadata.get("lj_length_nm"),
+            lj_time_ps=metadata.get("lj_time_ps"),
+            total_time=total_time,
             cutoff_coulomb=metadata.get("cutoff_coulomb"),
             cutoff_vdw=metadata.get("cutoff_vdw"),
             exit_code=metadata.get("exit_code"),

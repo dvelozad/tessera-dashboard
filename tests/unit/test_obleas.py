@@ -147,13 +147,44 @@ def test_build_lammps_config():
 def test_build_lammps_config_without_timestep_skips_diffusion():
     config = build_lammps_config(
         trajectory="t.lammpstrj",
-        units="lj",
+        units="real",
         timestep=None,
         selections={},
         label="x",
     )
     assert "analysis diffusion" not in config
     assert "timestep" not in config
+
+
+def test_build_lammps_config_requires_lj_mapping():
+    """Reduced units cannot be analysed without the σ/τ the modeller chose."""
+    import pytest
+
+    from mddatalake.analysis.obleas import ObleasError
+
+    with pytest.raises(ObleasError, match="lj_length_nm"):
+        build_lammps_config(
+            trajectory="t.lammpstrj",
+            units="lj",
+            timestep=0.004,
+            selections={},
+            label="x",
+        )
+
+
+def test_build_lammps_config_emits_lj_mapping():
+    config = build_lammps_config(
+        trajectory="t.lammpstrj",
+        units="lj",
+        timestep=0.004,
+        selections={},
+        label="x",
+        lj_length_nm=0.34,
+        lj_time_ps=2.0,
+    )
+    assert "lammps_units lj" in config
+    assert "lj_length_nm 0.34" in config
+    assert "lj_time_ps 2" in config
 
 
 def test_existing_paths_accepts_a_bare_string(tmp_path: Path):

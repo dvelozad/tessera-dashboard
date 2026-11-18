@@ -110,6 +110,11 @@ export interface SimulationRun {
   coulomb_method?: string | null;
   cutoff_coulomb?: number | null;
   cutoff_vdw?: number | null;
+  // Unit system, and the σ/τ mapping for reduced units.
+  units?: string | null;
+  lj_length_nm?: number | null;
+  lj_time_ps?: number | null;
+  time_is_manual?: boolean;
   // Organisation: the project and campaign a run belongs to, plus its labels.
   project_id?: number | null;
   project_name?: string | null;
@@ -138,6 +143,9 @@ export interface RunUpdate {
   cutoff_vdw?: number;
   slurm_job_id?: string;
   compute_node?: string;
+  units?: string;
+  lj_length_nm?: number;
+  lj_time_ps?: number;
 }
 
 export interface Artifact {

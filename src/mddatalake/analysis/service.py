@@ -108,6 +108,8 @@ def build_lammps_config(
     selections: dict[str, list[int]],
     label: str,
     with_transport: bool = True,
+    lj_length_nm: float | None = None,
+    lj_time_ps: float | None = None,
 ) -> str:
     """Generate the .anls config for a LAMMPS run."""
     lines = [
@@ -116,6 +118,17 @@ def build_lammps_config(
         "trajectory_type lammps",
         f"lammps_units {units}",
     ]
+    # Reduced units carry no intrinsic length or time; obleas refuses to guess,
+    # so the σ/τ mapping the modeller chose is passed through.
+    if units == "lj":
+        if lj_length_nm and lj_time_ps:
+            lines.append(f"lj_length_nm {lj_length_nm:g}")
+            lines.append(f"lj_time_ps {lj_time_ps:g}")
+        else:
+            raise ObleasError(
+                "Reduced (LJ) units need a length and time mapping: set "
+                "lj_length_nm (σ in nm) and lj_time_ps (τ in ps) on the run."
+            )
     if timestep:
         lines.append(f"timestep {timestep:g}")
 
@@ -191,7 +204,13 @@ async def analyze_directory(
         return series
 
     inputs = _existing_paths(files.get("input"))
-    units = detect_lammps_units(inputs)
+    # The run's stored unit system wins; the input script is the fallback for
+    # records made before it was recorded.
+    from mddatalake.utils.units import normalise_units
+
+    units = normalise_units(metadata.get("units")) or detect_lammps_units(inputs)
+    lj_length_nm = metadata.get("lj_length_nm")
+    lj_time_ps = metadata.get("lj_time_ps")
     data_files = _existing_paths(files.get("data"))
     selections = selections_from_mapping(metadata.get("atom_type_mapping"))
 
@@ -221,6 +240,8 @@ async def analyze_directory(
             selections=selections,
             label=label,
             with_transport=with_transport,
+            lj_length_nm=_as_float(lj_length_nm),
+            lj_time_ps=_as_float(lj_time_ps),
         )
 
         try:
@@ -237,6 +258,8 @@ async def analyze_directory(
                     selections=selections,
                     label=label,
                     with_transport=False,
+                    lj_length_nm=_as_float(lj_length_nm),
+                    lj_time_ps=_as_float(lj_time_ps),
                 )
                 series = await runner.run_config(work, structural)
             except ObleasError as retry_error:

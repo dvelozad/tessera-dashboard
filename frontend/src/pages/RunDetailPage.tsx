@@ -351,10 +351,22 @@ export const RunDetailPage: React.FC = () => {
               <span className="rdp-kvlist__key">Composition</span>
               <span className="rdp-kvlist__val">{run.system.composition}</span>
 
-              {run.total_time && (
+              {run.total_time ? (
                 <>
-                  <span className="rdp-kvlist__key">Length</span>
-                  <span className="rdp-kvlist__val">{run.total_time.toFixed(2)} ns</span>
+                  <span className="rdp-kvlist__key">Simulated</span>
+                  <span className="rdp-kvlist__val">
+                    {run.total_time.toFixed(2)} ns
+                    {run.time_is_manual && (
+                      <span style={{ color: 'var(--fg-muted)', fontSize: 11 }}> · stated</span>
+                    )}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="rdp-kvlist__key">Simulated</span>
+                  <span className="rdp-kvlist__val" style={{ color: 'var(--fg-muted)' }}>
+                    not known
+                  </span>
                 </>
               )}
 
@@ -363,6 +375,7 @@ export const RunDetailPage: React.FC = () => {
 
               {(
                 [
+                  ['Units', run.units ? run.units.toUpperCase() : null],
                   ['Thermostat', run.thermostat],
                   ['Barostat', run.barostat],
                   ['Integrator', run.integrator],

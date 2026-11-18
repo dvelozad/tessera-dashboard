@@ -38,12 +38,15 @@ class ScenarioDetector:
 
     # Weights for completeness score calculation (sum to 100)
     WEIGHTS = {
-        "trajectory": 40,
+        "trajectory": 35,
         "topology": 20,
         "log_file": 20,
         "input_script": 10,
         "molecule_ids": 5,
         "bonds_angles": 5,
+        # A run whose unit system is unknown cannot say what its timestep
+        # measures, so this is required, not optional decoration.
+        "units": 5,
     }
 
     def detect(self, metadata: dict, artifacts: list[dict]) -> CompletenessInfo:
@@ -63,6 +66,7 @@ class ScenarioDetector:
         has_input = self._has_artifact_type(artifacts, "input")
         has_molecule_ids = metadata.get("has_molecule_ids", False)
         has_bonds_angles = metadata.get("has_bonds_angles", False)
+        has_units = bool(metadata.get("units"))
 
         # Calculate completeness score
         score = 0
@@ -78,6 +82,8 @@ class ScenarioDetector:
             score += self.WEIGHTS["molecule_ids"]
         if has_bonds_angles:
             score += self.WEIGHTS["bonds_angles"]
+        if has_units:
+            score += self.WEIGHTS["units"]
 
         # Determine scenario
         scenario = self._classify_scenario(
@@ -98,6 +104,8 @@ class ScenarioDetector:
             missing_data.append("molecule_ids")
         if not has_bonds_angles:
             missing_data.append("bonds_angles")
+        if not has_units:
+            missing_data.append("units")
 
         # Build quality flags
         quality_flags = {
@@ -107,6 +115,7 @@ class ScenarioDetector:
             "has_input_script": has_input,
             "has_molecule_ids": has_molecule_ids,
             "has_bonds_angles": has_bonds_angles,
+            "has_units": has_units,
             "scenario_type": scenario.value,
         }
 
