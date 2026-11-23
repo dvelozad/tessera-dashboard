@@ -127,6 +127,9 @@ entry has all of the following:
 | input deck (`in.*`, `run.lmp`, `.mdp`) | ensemble, thermostat, force field, timestep | copy it into the run directory before pushing |
 | data / topology (`.lmp`, `data.*`, `.tpr`, `.gro`) | atom count, composition, 3D preview | same |
 | trajectory | preview and structural analyses | if there is none, push the rest anyway and label it `no-trajectory` |
+| **unit system** (`units`) | a timestep is a bare number without it: 1 fs in `real`, 1 ps in `metal`, 1 τ in `lj` | read it from the input deck's `units` line; `tessera-ctl` sends it with `--set units=<system>` |
+| reduced units: σ and τ | `lj` runs carry no intrinsic length or time; without `lj_length_nm` and `lj_time_ps` the simulated time and every obleas analysis are meaningless | `--set lj_length_nm=0.34 lj_time_ps=2.0` |
+| **stage / campaign** | which part of the protocol this run is (equilibrium, ET, production, …) | create the campaign on the project and move the run into it |
 | description | what the run physically is | never leave it empty |
 | labels | how it is used (`production`, `paper-1`, `benchmark`, `needs-review`, `superseded`) | at least one |
 
@@ -140,6 +143,42 @@ If it returns nothing, the log was not parsed: check the file is LAMMPS output
 and not an exchange or build log. On the server,
 `scripts/enrich_runs.py --run-id <id>` re-parses stored logs after the fact —
 but it can only recover what was actually saved.
+
+## Stages: a project is a protocol, not a bag of runs
+
+A project is one scientific campaign; inside it, runs belong to **stages** —
+the phases of the protocol (equilibrium, heating, ET, production, repeats).
+Stages are named freely by whoever files the work; Tessera imposes no fixed
+list, because protocols differ. File each run into its stage so the project
+reads as the protocol it was:
+
+```bash
+tessera_ctl.py raw POST   /projects/11/groups --data '{"name":"equilibration","description":"NPT 5 ns before the electrode is charged"}'
+tessera_ctl.py raw GET    /projects/11/groups
+tessera_ctl.py raw PATCH  /runs/42/group --data '{"group_id":3}'
+```
+
+A run's project and stage together answer "where in the protocol is this".
+Cross-cutting properties (which paper used it, is it superseded) stay labels.
+
+## H-AdResS runs need more than an atomistic one
+
+Every LAMMPS or GROMACS run may be atomistic (no H-AdResS) or H-AdResS; the
+same engine does both, so never infer it from the engine. For an H-AdResS run,
+record in the description and labels:
+
+- that H-AdResS is running (`simulation_method=H_ADRESS`), and the resolution
+  scheme;
+- whether **GCS** (grand-canonical switching) is active, and the reservoir;
+- whether the dump carries `reservoirH` and which column it is;
+- the compensation tables the run used (`Mean_Comp_*.txt`) — push them as
+  artifacts under `other`, since the run cannot be reconstructed without them;
+- the λ / windowing or thermodynamic-integration settings that define the
+  coupling.
+
+If a field you need does not exist in Tessera, say so in your reply and write
+the request to `~/tessera-requests/` on this machine; the integration session
+reads that directory.
 
 ## Rule: file what matters
 
