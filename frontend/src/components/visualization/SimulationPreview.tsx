@@ -20,6 +20,38 @@ export const SimulationPreview: React.FC<SimulationPreviewProps> = ({
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const stageRef = useRef<Stage | null>(null);
+    const observerRef = useRef<ResizeObserver | null>(null);
+
+    // Frame proportions. The width stays the column's width and the height
+    // follows the ratio, so choosing 1:1 for a cubic box grows the viewport
+    // vertically and the molecule is drawn larger instead of being boxed into
+    // a fixed height with empty space either side.
+    const ASPECTS: Record<string, string> = {
+        '3:4': '3 / 4',
+        '1:1': '1 / 1',
+        '4:3': '4 / 3',
+        '16:9': '16 / 9',
+    };
+    const [aspect, setAspect] = useState<string>(() => {
+        try {
+            return localStorage.getItem('tessera.preview.aspect') || 'fill';
+        } catch {
+            return 'fill';
+        }
+    });
+
+    useEffect(() => {
+        try {
+            localStorage.setItem('tessera.preview.aspect', aspect);
+        } catch {
+            /* a preference that cannot be stored must not break the viewer */
+        }
+        const frame = window.requestAnimationFrame(() => {
+            stageRef.current?.handleResize();
+            stageRef.current?.viewer?.requestRender();
+        });
+        return () => window.cancelAnimationFrame(frame);
+    }, [aspect]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [status, setStatus] = useState<string>('Initializing...');
@@ -81,6 +113,13 @@ export const SimulationPreview: React.FC<SimulationPreviewProps> = ({
                         }
                     };
                     window.addEventListener('resize', handleResize);
+
+                    // Switching the frame ratio resizes the viewport without
+                    // any window resize event.
+                    observerRef.current?.disconnect();
+                    const observer = new ResizeObserver(handleResize);
+                    if (containerRef.current) observer.observe(containerRef.current);
+                    observerRef.current = observer;
 
                 } catch (error) {
                     console.error('Failed to initialize NGL Stage:', error);
@@ -327,7 +366,10 @@ export const SimulationPreview: React.FC<SimulationPreviewProps> = ({
     return (
         <Box
             sx={{
-                height,
+                // 'fill' keeps the designed height; a ratio drives the height
+                // from the column width.
+                height: aspect === 'fill' ? height : 'auto',
+                aspectRatio: aspect === 'fill' ? undefined : ASPECTS[aspect],
                 width: '100%',
                 position: 'relative',
                 bgcolor: '#000',
@@ -419,6 +461,55 @@ export const SimulationPreview: React.FC<SimulationPreviewProps> = ({
                                 />
                             )}
                         </Box>
+                        <Box
+                            sx={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 0.25,
+                                pointerEvents: 'auto',
+                                bgcolor: 'rgba(0,0,0,0.55)',
+                                px: 0.75,
+                                py: 0.25,
+                                borderRadius: 4,
+                                backdropFilter: 'blur(4px)',
+                            }}
+                        >
+                            <span
+                                style={{
+                                    fontFamily: "'IBM Plex Mono', monospace",
+                                    fontSize: 10,
+                                    letterSpacing: '0.06em',
+                                    color: 'rgba(255,255,255,0.55)',
+                                    marginRight: 4,
+                                }}
+                            >
+                                FRAME
+                            </span>
+                            {(['3:4', '1:1', '4:3', '16:9', 'fill'] as const).map((option) => (
+                                <Button
+                                    key={option}
+                                    size="small"
+                                    variant={aspect === option ? 'contained' : 'text'}
+                                    aria-pressed={aspect === option}
+                                    title={
+                                        option === 'fill'
+                                            ? 'Keep the designed height'
+                                            : `Make the viewport ${option}`
+                                    }
+                                    onClick={() => setAspect(option)}
+                                    sx={{
+                                        color: 'white',
+                                        minWidth: 'auto',
+                                        px: 0.75,
+                                        fontSize: '0.7rem',
+                                        fontFamily: "'IBM Plex Mono', monospace",
+                                    }}
+                                >
+                                    {option === 'fill' ? 'Fill' : option}
+                                </Button>
+                            ))}
+                        </Box>
+
                         <Chip
                             label="Preview Mode"
                             size="small"
@@ -435,10 +526,13 @@ export const SimulationPreview: React.FC<SimulationPreviewProps> = ({
                             left: 10,
                             right: 10,
                             display: 'flex',
+                            flexWrap: 'wrap',
+                            rowGap: 0.5,
                             gap: 1,
                             justifyContent: 'center',
+                            alignContent: 'center',
                             bgcolor: 'rgba(0,0,0,0.6)',
-                            p: 1,
+                            p: 0.75,
                             borderRadius: 4,
                             backdropFilter: 'blur(4px)'
                         }}
