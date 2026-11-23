@@ -92,7 +92,9 @@ def call_via_ssh(method: str, path: str, payload: dict | None = None) -> object:
     host = os.environ["TESSERA_SSH"]
     # Non-interactive SSH does not source the profile, so name the path.
     remote_ctl = os.environ.get("TESSERA_REMOTE_CTL", "~/.local/bin/tessera-ctl")
-    command = f"{remote_ctl} raw {method} {path}"
+    # Quote the path: a query string reaches the remote shell unquoted, where
+    # zsh treats '?' and '&' as syntax and fails before tessera-ctl runs.
+    command = f"{remote_ctl} raw {method} {shlex.quote(path)}"
     if payload is not None:
         command += " --data " + shlex.quote(json.dumps(payload))
 

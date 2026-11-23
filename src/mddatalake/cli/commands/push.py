@@ -157,13 +157,23 @@ async def push_command(
     # Analyse here, on the machine that holds the data: obleas reads the
     # trajectory in place, so no bytes move for this.
     analyses: list[dict[str, Any]] = []
+    # Why analyses are absent travels with the record, so a reader of the lake
+    # can tell "nothing to analyse" from "the analyser was missing".
+    analysis_note: str | None = None
+    if not settings.obleas_enabled:
+        analysis_note = "analysis disabled in settings"
+    elif not analyze:
+        analysis_note = "pushed with --no-analyze"
     if analyze and settings.obleas_enabled:
         from mddatalake.analysis.service import analyze_directory, runner_from_settings
 
         runner = runner_from_settings()
         if not runner.available():
+            analysis_note = f"obleas not found at {runner.binary!r}"
             console.print(
-                f"[yellow]obleas not found at {runner.binary!r}; skipping analysis[/yellow]"
+                f"[bold red]WARNING: obleas not found at {runner.binary!r} — this run "
+                f"is being filed WITHOUT analyses. Set OBLEAS_BIN or put obleas on PATH, "
+                f"and re-push, or the structural analyses can never be recovered.[/bold red]"
             )
         else:
             console.print("[bold]Running obleas analyses...[/bold]")
@@ -178,7 +188,8 @@ async def push_command(
                 analyses = [item.as_record() for item in series]
                 console.print(f"  {len(analyses)} series from obleas")
             except Exception as e:  # noqa: BLE001 - analysis must not lose the push
-                console.print(f"[yellow]analysis failed: {e}[/yellow]")
+                analysis_note = f"analysis failed: {e}"
+                console.print(f"[bold red]WARNING: analysis failed: {e}[/bold red]")
 
     payload = {
         "record_version": 1,
@@ -190,6 +201,7 @@ async def push_command(
         "metadata": _jsonable(metadata),
         "artifacts": artifacts,
         "analyses": analyses,
+        "analysis_note": analysis_note,
     }
 
     record_path = record_path or Path(f"{run_name}.json")

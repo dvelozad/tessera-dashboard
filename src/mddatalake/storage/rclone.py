@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Any, BinaryIO
@@ -63,6 +64,27 @@ class RcloneBackend(StorageBackend):
 
     # --------------------------------------------------------------- plumbing
 
+    @staticmethod
+    def _binary() -> str:
+        """Locate the rclone executable.
+
+        Callers do not all inherit an interactive PATH: a systemd unit, a
+        non-login ssh shell and a cron job each see a different one, and a bare
+        "rclone" then fails with "not installed" while it is plainly installed
+        in ~/.local/bin. RCLONE_BIN overrides the search.
+        """
+        explicit = os.environ.get("RCLONE_BIN")
+        if explicit:
+            return explicit
+        found = shutil.which("rclone")
+        if found:
+            return found
+        for candidate in ("~/.local/bin/rclone", "/usr/local/bin/rclone", "/usr/bin/rclone"):
+            path = Path(candidate).expanduser()
+            if path.is_file():
+                return str(path)
+        return "rclone"
+
     def _base_flags(self) -> list[str]:
         flags: list[str] = ["--retries", str(self.retries), "--stats", "0"]
         if self.config_path:
@@ -91,7 +113,7 @@ class RcloneBackend(StorageBackend):
         """Run rclone and return (returncode, stdout, stderr)."""
         try:
             process = await asyncio.create_subprocess_exec(
-                "rclone",
+                self._binary(),
                 *args,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -211,7 +233,7 @@ class RcloneBackend(StorageBackend):
         ]
         try:
             process = await asyncio.create_subprocess_exec(
-                "rclone",
+                self._binary(),
                 *args,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,

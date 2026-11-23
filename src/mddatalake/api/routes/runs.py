@@ -207,6 +207,15 @@ async def list_runs(
     if slurm_job_id:
         stmt = stmt.where(SimulationRun.slurm_job_id == slurm_job_id)
 
+    # Count the filtered rows before any relationship loader is attached: a
+    # statement carrying contains_eager/selectinload cannot be aliased into a
+    # count without conflict.
+    from sqlalchemy import func
+
+    count_stmt = select(func.count()).select_from(stmt.order_by(None).subquery())
+    total_result = await db.execute(count_stmt)
+    total_count = total_result.scalar_one()
+
     # Add eager loading for relationships
     # Use contains_eager for joined relationships, selectinload for others
     from sqlalchemy.orm import contains_eager
@@ -222,25 +231,21 @@ async def list_runs(
         stmt = stmt.options(selectinload(SimulationRun.system))
 
     if project_joined:
-        stmt = stmt.options(contains_eager(SimulationRun.project))
+        # The join already carries the project, so its strategy must be owned
+        # by contains_eager; the campaign still needs loading.
+        stmt = stmt.options(
+            contains_eager(SimulationRun.project), selectinload(SimulationRun.group)
+        )
     else:
-        stmt = stmt.options(selectinload(SimulationRun.project), selectinload(SimulationRun.group))
+        stmt = stmt.options(
+            selectinload(SimulationRun.project), selectinload(SimulationRun.group)
+        )
 
     # Labels are shown next to each run in the project view.
     stmt = stmt.options(selectinload(SimulationRun.tags))
 
-    # Get total count before pagination
-    from sqlalchemy import func
-    count_stmt = select(func.count()).select_from(stmt.alias())
-    total_result = await db.execute(count_stmt)
-    total_count = total_result.scalar_one()
-
     # Apply pagination
     stmt = stmt.limit(limit).offset(offset)
-
-    # The datalake table groups by project, so load it eagerly instead of
-    # letting each row trigger a lazy load.
-    stmt = stmt.options(selectinload(SimulationRun.project))
 
     # Execute query
     result = await db.execute(stmt)
@@ -730,14 +735,23 @@ async def update_run(
         "lj_length_nm",
         "lj_time_ps",
     )
+    # A field that is absent is left alone; an explicit null clears it. That
+    # distinction is what lets a person remove a value a parser invented
+    # without having to submit a different one.
+    provided = update_data.model_fields_set
+    required = {"run_name"}
     for field in simple:
+        if field not in provided:
+            continue
         value = getattr(update_data, field)
-        if value is not None:
-            setattr(run, field, value)
+        if value is None and field in required:
+            raise HTTPException(status_code=422, detail=f"{field} cannot be empty")
+        setattr(run, field, value)
 
     # The unit system is a string column, validated against the systems the
-    # time conversion understands.
-    if update_data.units is not None:
+    # time conversion understands. It cannot be cleared: a run without one
+    # cannot state its time.
+    if "units" in provided:
         from mddatalake.utils.units import UNIT_SYSTEMS, normalise_units
 
         system = normalise_units(update_data.units)
@@ -758,8 +772,12 @@ async def update_run(
         "coulomb_method": CoulombType,
     }
     for field, enum_class in enums.items():
+        if field not in provided:
+            continue
         value = getattr(update_data, field)
         if value is None:
+            # Clearing an invented ensemble or integrator is legitimate.
+            setattr(run, field, None)
             continue
         try:
             setattr(run, field, enum_class(value))
@@ -776,18 +794,13 @@ async def update_run(
 
     # A stated simulated time is authoritative; only a computed one is
     # recomputed when the unit system or the step count changes.
-    if update_data.total_time is not None:
-        run.time_is_manual = True
+    if "total_time" in provided:
+        # A stated time is authoritative; clearing it hands the value back to
+        # being derived.
+        run.time_is_manual = update_data.total_time is not None
 
-    if not run.time_is_manual and any(
-        value is not None
-        for value in (
-            update_data.units,
-            update_data.timestep,
-            update_data.n_steps,
-            update_data.lj_time_ps,
-        )
-    ):
+    touch_time = {"units", "timestep", "n_steps", "lj_time_ps"}
+    if not run.time_is_manual and (touch_time & provided):
         from mddatalake.utils.units import simulated_time_ns
 
         run.total_time = simulated_time_ns(

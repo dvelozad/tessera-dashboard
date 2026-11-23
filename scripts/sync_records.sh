@@ -22,12 +22,28 @@ fi
 cd "$APP_DIR" || exit 1
 
 shopt -s nullglob
+mkdir -p "$LOCAL_DIR/.failed" "$LOCAL_DIR/.done"
+
 for record in "$LOCAL_DIR"/*.json; do
-    # Skip records already imported (the importer reports it, but this keeps
-    # the log quiet on a 2-minute timer).
-    "$PYTHON" -m mddatalake.cli.main import "$record" 2>&1 \
-        | grep -v "already exists" \
-        | sed "s|^|$(date -Is) |"
+    name=$(basename "$record")
+
+    # A record that has already been imported is not re-parsed on every tick.
+    if [ -f "$LOCAL_DIR/.done/$name" ]; then
+        continue
+    fi
+
+    output=$("$PYTHON" -m mddatalake.cli.main import "$record" 2>&1)
+    status=$?
+    printf '%s\n' "$output" | sed "s|^|$(date -Is) |" | grep -v "already exists" || true
+
+    if [ "$status" -eq 0 ] || printf '%s' "$output" | grep -q "already exists"; then
+        touch "$LOCAL_DIR/.done/$name"
+    else
+        # A failure used to be swallowed by the pipeline above; keep the record
+        # and its error where a person can find them.
+        printf '%s\n' "$output" > "$LOCAL_DIR/.failed/$name.error"
+        echo "$(date -Is) FAILED $name (see .failed/$name.error)"
+    fi
 done
 
 # Imported runs have no preview yet. Build a few per tick so the dashboard

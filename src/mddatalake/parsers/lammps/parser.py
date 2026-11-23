@@ -176,9 +176,13 @@ class LammpsParser:
             if match := re.search(r"temp(?:/initial)?\s+([\d.]+)", content, re.IGNORECASE):
                 metadata["temperature_target"] = float(match.group(1))
 
-            # Parse pressure (for NPT)
-            if match := re.search(r"press(?:ure)?\s+([\d.]+)", content, re.IGNORECASE):
-                metadata["pressure_target"] = float(match.group(1))
+            # Parse the pressure setpoint. Only a barostat sets one, so the
+            # value must be non-negative: under the schema a negative number
+            # cannot be a target.
+            if match := re.search(r"press(?:ure)?\s+(-?[\d.]+)", content, re.IGNORECASE):
+                candidate = float(match.group(1))
+                if candidate >= 0:
+                    metadata["pressure_target"] = candidate
 
             # Parse pair style (for Coulomb method detection)
             if match := re.search(r"pair_style\s+(\S+)", content):
@@ -288,20 +292,16 @@ class LammpsParser:
                         except (TypeError, ValueError):
                             pass  # Skip if data isn't numeric
 
-            # Parse pressure from echoed commands (if present)
-            if match := re.search(r"press(?:ure)?\s+([\d.]+)", content, re.IGNORECASE):
-                metadata["pressure_target"] = float(match.group(1))
-            # Otherwise extract from thermodynamic output as estimate
-            elif not metadata.get("pressure_target"):
-                if "Press" in thermodynamic_data and thermodynamic_data["Press"].get("data"):
-                    pressures = thermodynamic_data["Press"]["data"]
-                    # Use mean of pressure values as target estimate
-                    if pressures and len(pressures) > 0 and all(isinstance(p, (int, float)) for p in pressures):
-                        try:
-                            import statistics
-                            metadata["pressure_target"] = round(statistics.mean(pressures), 2)
-                        except (TypeError, ValueError):
-                            pass  # Skip if data isn't numeric
+            # Parse the pressure setpoint from echoed commands. Only a
+            # non-negative value can be a target under the schema; a negative
+            # number here is a measured mean caught by the same pattern.
+            if match := re.search(r"press(?:ure)?\s+(-?[\d.]+)", content, re.IGNORECASE):
+                candidate = float(match.group(1))
+                if candidate >= 0:
+                    metadata["pressure_target"] = candidate
+            # A measured mean pressure is not a setpoint, so no target is
+            # invented from the thermo column: an NVT run has none, and a
+            # "target" of -34 bar from the average is simply wrong.
 
             # Detect thermostat from echoed fix commands (if present)
             if not metadata.get("thermostat"):
@@ -635,6 +635,12 @@ class LammpsParser:
         # Trajectories
         if suffix in [".dump", ".lammpstrj", ".dcd", ".xtc"] or "traj" in name:
             return ArtifactType.TRAJECTORY
+
+        # Logs first: the canonical name `log.lammps` carries a .lammps suffix,
+        # so it would otherwise be taken for an input deck and the run would be
+        # recorded as having no log at all.
+        if name.startswith("log") or suffix in [".log", ".out"]:
+            return ArtifactType.LOG
 
         # Input scripts (check BEFORE topology, as .lmp can be either)
         if suffix in [".in", ".mdp", ".lammps"]:

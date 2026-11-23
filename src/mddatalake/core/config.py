@@ -1,8 +1,16 @@
 """Application configuration using Pydantic Settings."""
 
+from pathlib import Path
 from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# .env is looked for beside the working directory first (a deployment), then
+# at the repository root (a CLI run from inside a data directory). Loading it
+# only from the CWD meant `tessera push` silently ran without obleas or Drive
+# settings whenever it was started from elsewhere.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_ENV_FILES = (".env", str(_REPO_ROOT / ".env"))
 
 from mddatalake.core.enums import ValidationLevel
 
@@ -11,7 +19,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_ENV_FILES,
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",

@@ -381,6 +381,28 @@ class IngestionService:
         else:
             total_time = metadata.get("total_time")
 
+        # Optional numbers that violate the schema's checks (a negative
+        # pressure target from an older record) are dropped rather than
+        # allowed to abort the whole import.
+        for field, positive in (
+            ("temperature_target", True),
+            ("pressure_target", False),
+            ("timestep", True),
+            ("n_steps", True),
+            ("total_time", True),
+        ):
+            value = metadata.get(field)
+            if value is None:
+                continue
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                metadata[field] = None
+                continue
+            if (positive and number <= 0) or (not positive and number < 0):
+                logger.warning(f"Dropping out-of-range {field}={value} for {run_name}")
+                metadata[field] = None
+
         run = SimulationRun(
             project_id=project.id,
             system_id=system.id,
